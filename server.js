@@ -9,7 +9,6 @@ import mqtt from "mqtt";
 const PORT =
   process.env.PORT || 3000;
 
-// These come from Render Environment Variables
 const MQTT_BROKER =
   process.env.MQTT_BROKER;
 
@@ -18,6 +17,23 @@ const MQTT_USERNAME =
 
 const MQTT_PASSWORD =
   process.env.MQTT_PASSWORD;
+
+const OTA_API_TOKEN =
+  process.env.OTA_API_TOKEN;
+
+const OTA_DEVICE_SECRET =
+  process.env.OTA_DEVICE_SECRET;
+
+// ============================================================
+// STATION
+// ============================================================
+
+const STATION_ID =
+  "GJ-01";
+
+// ============================================================
+// MQTT TOPICS
+// ============================================================
 
 const TELEMETRY_TOPIC =
   "weather/GJ-01/telemetry";
@@ -31,35 +47,38 @@ const COMMAND_TOPIC =
 const OTA_TOPIC =
   "weather/GJ-01/ota";
 
-const STATION_ID =
-  "GJ-01";
+// Later WT32 will publish OTA progress here.
+const OTA_STATUS_TOPIC =
+  "weather/GJ-01/ota/status";
+
+// ============================================================
+// DEVICE TIMEOUT
+// ============================================================
 
 const OFFLINE_TIMEOUT =
   30000;
 
 // ============================================================
-// CHECK REQUIRED ENVIRONMENT VARIABLES
+// CHECK ENVIRONMENT
 // ============================================================
 
-if (!MQTT_BROKER)
-{
-  console.error(
-    "ERROR: MQTT_BROKER environment variable is missing"
-  );
-}
+const requiredEnvironment =
+[
+  "MQTT_BROKER",
+  "MQTT_USERNAME",
+  "MQTT_PASSWORD",
+  "OTA_API_TOKEN",
+  "OTA_DEVICE_SECRET"
+];
 
-if (!MQTT_USERNAME)
+for (const name of requiredEnvironment)
 {
-  console.error(
-    "ERROR: MQTT_USERNAME environment variable is missing"
-  );
-}
-
-if (!MQTT_PASSWORD)
-{
-  console.error(
-    "ERROR: MQTT_PASSWORD environment variable is missing"
-  );
+  if (!process.env[name])
+  {
+    console.error(
+      `WARNING: ${name} is missing`
+    );
+  }
 }
 
 // ============================================================
@@ -78,7 +97,7 @@ app.use(
 );
 
 // ============================================================
-// CURRENT WEATHER STATE
+// CURRENT WEATHER DATA
 // ============================================================
 
 let latestWeather =
@@ -126,6 +145,28 @@ let latestWeather =
     TELEMETRY_TOPIC
 };
 
+// ============================================================
+// OTA STATE
+// ============================================================
+
+let otaState =
+{
+  status:
+    "idle",
+
+  requested_version:
+    null,
+
+  firmware_url:
+    null,
+
+  requested_at:
+    null,
+
+  last_device_message:
+    null
+};
+
 let lastMessageTime =
   0;
 
@@ -138,8 +179,17 @@ const sseClients =
 
 function broadcastWeather()
 {
+  const data =
+  {
+    weather:
+      latestWeather,
+
+    ota:
+      otaState
+  };
+
   const payload =
-    `data: ${JSON.stringify(latestWeather)}\n\n`;
+    `data: ${JSON.stringify(data)}\n\n`;
 
   for (
     const client
@@ -163,7 +213,7 @@ function broadcastWeather()
 }
 
 // ============================================================
-// STARTUP INFO
+// MQTT
 // ============================================================
 
 console.log();
@@ -172,7 +222,7 @@ console.log(
 );
 
 console.log(
-  "WEATHER STATION BACKEND"
+  "WT32 WEATHER STATION BACKEND"
 );
 
 console.log(
@@ -180,7 +230,7 @@ console.log(
 );
 
 console.log(
-  "MQTT Broker:"
+  "Broker:"
 );
 
 console.log(
@@ -188,7 +238,7 @@ console.log(
 );
 
 console.log(
-  "MQTT Username:"
+  "MQTT User:"
 );
 
 console.log(
@@ -198,7 +248,7 @@ console.log(
 console.log();
 
 // ============================================================
-// MQTT CLIENT
+// MQTT CONNECTION
 // ============================================================
 
 const mqttClient =
@@ -247,7 +297,8 @@ mqttClient.on(
     mqttClient.subscribe(
       [
         TELEMETRY_TOPIC,
-        STATUS_TOPIC
+        STATUS_TOPIC,
+        OTA_STATUS_TOPIC
       ],
       {
         qos: 0
@@ -257,7 +308,7 @@ mqttClient.on(
         if (error)
         {
           console.error(
-            "MQTT subscribe failed:",
+            "MQTT subscription failed:",
             error.message
           );
 
@@ -276,6 +327,10 @@ mqttClient.on(
           STATUS_TOPIC
         );
 
+        console.log(
+          OTA_STATUS_TOPIC
+        );
+
         console.log();
       }
     );
@@ -283,7 +338,7 @@ mqttClient.on(
 );
 
 // ============================================================
-// MQTT MESSAGE HANDLER
+// MQTT MESSAGE
 // ============================================================
 
 mqttClient.on(
@@ -299,6 +354,11 @@ mqttClient.on(
     );
 
     console.log(
+      "Topic:",
+      topic
+    );
+
+    console.log(
       raw
     );
 
@@ -310,7 +370,7 @@ mqttClient.on(
         );
 
       // ======================================================
-      // TELEMETRY
+      // WEATHER TELEMETRY
       // ======================================================
 
       if (
@@ -413,15 +473,10 @@ mqttClient.on(
           "Firmware:",
           latestWeather.firmware
         );
-
-        console.log(
-          "IP:",
-          latestWeather.ip
-        );
       }
 
       // ======================================================
-      // STATUS
+      // DEVICE STATUS
       // ======================================================
 
       if (
@@ -463,7 +518,41 @@ mqttClient.on(
         };
 
         console.log(
-          "Status updated."
+          "Device status updated."
+        );
+      }
+
+      // ======================================================
+      // OTA STATUS
+      // ======================================================
+
+      if (
+        topic ===
+        OTA_STATUS_TOPIC
+      )
+      {
+        otaState =
+        {
+          ...otaState,
+
+          status:
+            data.status ??
+            otaState.status,
+
+          last_device_message:
+            data,
+
+          updated_at:
+            new Date()
+              .toISOString()
+        };
+
+        console.log(
+          "OTA status updated:"
+        );
+
+        console.log(
+          otaState
         );
       }
 
@@ -499,7 +588,7 @@ mqttClient.on(
   () =>
   {
     console.log(
-      "MQTT connection offline"
+      "MQTT offline"
     );
   }
 );
@@ -525,7 +614,7 @@ mqttClient.on(
 );
 
 // ============================================================
-// STATION OFFLINE CHECK
+// DEVICE OFFLINE CHECK
 // ============================================================
 
 setInterval(
@@ -560,7 +649,7 @@ setInterval(
     )
     {
       console.log(
-        "WT32 station OFFLINE"
+        "WT32 STATION OFFLINE"
       );
 
       broadcastWeather();
@@ -592,7 +681,10 @@ app.get(
           mqttClient.connected,
 
         broker:
-          "Private EMQX TLS"
+          "Private EMQX TLS",
+
+        ota:
+          "protected"
       }
     );
   }
@@ -643,6 +735,20 @@ app.get(
 );
 
 // ============================================================
+// OTA STATUS API
+// ============================================================
+
+app.get(
+  "/api/ota/status",
+  (req, res) =>
+  {
+    res.json(
+      otaState
+    );
+  }
+);
+
+// ============================================================
 // LIVE SSE
 // ============================================================
 
@@ -672,8 +778,17 @@ app.get(
 
     res.flushHeaders();
 
+    const initial =
+    {
+      weather:
+        latestWeather,
+
+      ota:
+        otaState
+    };
+
     res.write(
-      `data: ${JSON.stringify(latestWeather)}\n\n`
+      `data: ${JSON.stringify(initial)}\n\n`
     );
 
     sseClients.add(
@@ -703,72 +818,238 @@ app.get(
 );
 
 // ============================================================
-// COMMAND TEST ENDPOINT
+// CHECK API TOKEN
 // ============================================================
-//
-// This is useful later.
-// We are NOT enabling reboot or OTA yet.
-//
 
-app.post(
-  "/api/command",
-  (req, res) =>
+function checkApiToken(
+  req,
+  res,
+  next
+)
+{
+  const authorization =
+    req.headers.authorization;
+
+  if (!authorization)
   {
-    const command =
-      req.body.command;
-
-    if (!command)
-    {
-      return res.status(400).json(
+    return res
+      .status(401)
+      .json(
         {
-          ok: false,
+          ok:
+            false,
+
           error:
-            "command is required"
+            "Authorization header missing"
         }
       );
+  }
+
+  const expected =
+    `Bearer ${OTA_API_TOKEN}`;
+
+  if (
+    authorization !==
+    expected
+  )
+  {
+    return res
+      .status(403)
+      .json(
+        {
+          ok:
+            false,
+
+          error:
+            "Invalid OTA API token"
+        }
+      );
+  }
+
+  next();
+}
+
+// ============================================================
+// OTA COMMAND
+// ============================================================
+//
+// SAFE TEST MODE.
+//
+// This sends an OTA command to the WT32,
+// but your current WT32 firmware will NOT flash.
+//
+// ============================================================
+
+app.post(
+  "/api/ota",
+  checkApiToken,
+
+  (req, res) =>
+  {
+    const version =
+      req.body.version;
+
+    const firmwareUrl =
+      req.body.url;
+
+    if (!version)
+    {
+      return res
+        .status(400)
+        .json(
+          {
+            ok:
+              false,
+
+            error:
+              "version is required"
+          }
+        );
+    }
+
+    if (!firmwareUrl)
+    {
+      return res
+        .status(400)
+        .json(
+          {
+            ok:
+              false,
+
+            error:
+              "url is required"
+          }
+        );
     }
 
     if (
       !mqttClient.connected
     )
     {
-      return res.status(503).json(
-        {
-          ok: false,
-          error:
-            "MQTT not connected"
-        }
-      );
+      return res
+        .status(503)
+        .json(
+          {
+            ok:
+              false,
+
+            error:
+              "MQTT broker is not connected"
+          }
+        );
     }
 
+    const command =
+    {
+      command:
+        "ota",
+
+      station:
+        STATION_ID,
+
+      version:
+        version,
+
+      url:
+        firmwareUrl,
+
+      secret:
+        OTA_DEVICE_SECRET,
+
+      requested_at:
+        new Date()
+          .toISOString()
+    };
+
+    const message =
+      JSON.stringify(
+        command
+      );
+
     mqttClient.publish(
-      COMMAND_TOPIC,
-      String(command),
+      OTA_TOPIC,
+
+      message,
+
       {
-        qos: 0,
-        retain: false
+        qos:
+          1,
+
+        retain:
+          false
       },
+
       (error) =>
       {
         if (error)
         {
-          return res.status(500).json(
-            {
-              ok: false,
-              error:
-                error.message
-            }
+          console.error(
+            "OTA publish error:",
+            error.message
           );
+
+          return res
+            .status(500)
+            .json(
+              {
+                ok:
+                  false,
+
+                error:
+                  error.message
+              }
+            );
         }
+
+        otaState =
+        {
+          status:
+            "command_sent",
+
+          requested_version:
+            version,
+
+          firmware_url:
+            firmwareUrl,
+
+          requested_at:
+            new Date()
+              .toISOString(),
+
+          last_device_message:
+            null
+        };
+
+        broadcastWeather();
+
+        console.log();
+        console.log(
+          "OTA COMMAND SENT"
+        );
+
+        console.log(
+          "Version:",
+          version
+        );
+
+        console.log(
+          "URL:",
+          firmwareUrl
+        );
 
         res.json(
           {
-            ok: true,
-            command:
-              command,
+            ok:
+              true,
+
+            status:
+              "command_sent",
+
+            version:
+              version,
 
             topic:
-              COMMAND_TOPIC
+              OTA_TOPIC
           }
         );
       }
@@ -777,7 +1058,87 @@ app.post(
 );
 
 // ============================================================
-// START HTTP SERVER
+// SAFE COMMAND ENDPOINT
+// ============================================================
+
+app.post(
+  "/api/command",
+  checkApiToken,
+
+  (req, res) =>
+  {
+    const command =
+      req.body.command;
+
+    const allowed =
+    [
+      "ping",
+      "status"
+    ];
+
+    if (
+      !allowed.includes(
+        command
+      )
+    )
+    {
+      return res
+        .status(400)
+        .json(
+          {
+            ok:
+              false,
+
+            error:
+              "Only ping and status are currently allowed"
+          }
+        );
+    }
+
+    if (
+      !mqttClient.connected
+    )
+    {
+      return res
+        .status(503)
+        .json(
+          {
+            ok:
+              false,
+
+            error:
+              "MQTT not connected"
+          }
+        );
+    }
+
+    mqttClient.publish(
+      COMMAND_TOPIC,
+      command,
+
+      {
+        qos:
+          0,
+
+        retain:
+          false
+      }
+    );
+
+    res.json(
+      {
+        ok:
+          true,
+
+        command:
+          command
+      }
+    );
+  }
+);
+
+// ============================================================
+// START
 // ============================================================
 
 app.listen(
@@ -789,17 +1150,24 @@ app.listen(
     );
 
     console.log();
-
     console.log(
-      `Weather API: http://localhost:${PORT}/api/weather`
+      "Endpoints:"
     );
 
     console.log(
-      `Health:      http://localhost:${PORT}/health`
+      "/api/weather"
     );
 
     console.log(
-      `Live SSE:    http://localhost:${PORT}/api/events`
+      "/api/events"
+    );
+
+    console.log(
+      "/api/ota/status"
+    );
+
+    console.log(
+      "/api/ota"
     );
 
     console.log();
