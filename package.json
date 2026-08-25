@@ -1,0 +1,15 @@
+{
+  "name": "weather-station-server",
+  "version": "1.0.0",
+  "description": "WT32 Weather Station MQTT Backend",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "mqtt": "^5.14.1"
+  }
+}
