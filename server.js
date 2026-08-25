@@ -3,14 +3,21 @@ import cors from "cors";
 import mqtt from "mqtt";
 
 // ============================================================
-// CONFIG
+// CONFIGURATION
 // ============================================================
 
-const PORT = process.env.PORT || 3000;
+const PORT =
+  process.env.PORT || 3000;
 
+// These come from Render Environment Variables
 const MQTT_BROKER =
-  process.env.MQTT_BROKER ||
-  "mqtt://test.mosquitto.org:1883";
+  process.env.MQTT_BROKER;
+
+const MQTT_USERNAME =
+  process.env.MQTT_USERNAME;
+
+const MQTT_PASSWORD =
+  process.env.MQTT_PASSWORD;
 
 const TELEMETRY_TOPIC =
   "weather/GJ-01/telemetry";
@@ -18,72 +25,137 @@ const TELEMETRY_TOPIC =
 const STATUS_TOPIC =
   "weather/GJ-01/status";
 
+const COMMAND_TOPIC =
+  "weather/GJ-01/command";
+
+const OTA_TOPIC =
+  "weather/GJ-01/ota";
+
 const STATION_ID =
   "GJ-01";
 
-const OFFLINE_TIMEOUT = 30000;
+const OFFLINE_TIMEOUT =
+  30000;
+
+// ============================================================
+// CHECK REQUIRED ENVIRONMENT VARIABLES
+// ============================================================
+
+if (!MQTT_BROKER)
+{
+  console.error(
+    "ERROR: MQTT_BROKER environment variable is missing"
+  );
+}
+
+if (!MQTT_USERNAME)
+{
+  console.error(
+    "ERROR: MQTT_USERNAME environment variable is missing"
+  );
+}
+
+if (!MQTT_PASSWORD)
+{
+  console.error(
+    "ERROR: MQTT_PASSWORD environment variable is missing"
+  );
+}
 
 // ============================================================
 // EXPRESS
 // ============================================================
 
-const app = express();
+const app =
+  express();
 
-app.use(cors());
-app.use(express.json());
+app.use(
+  cors()
+);
+
+app.use(
+  express.json()
+);
 
 // ============================================================
-// WEATHER STATE
+// CURRENT WEATHER STATE
 // ============================================================
 
-let latestWeather = {
-  station: STATION_ID,
+let latestWeather =
+{
+  station:
+    STATION_ID,
 
-  temperature: null,
-  pressure: null,
-  rain: null,
-  wind_speed: null,
+  temperature:
+    null,
 
-  firmware: null,
+  pressure:
+    null,
 
-  counter: null,
-  uptime: null,
+  rain:
+    null,
 
-  ip: null,
-  mac: null,
+  wind_speed:
+    null,
 
-  link_speed: null,
+  firmware:
+    null,
 
-  online: false,
+  counter:
+    null,
 
-  received_at: null,
+  uptime:
+    null,
 
-  mqtt_topic: TELEMETRY_TOPIC
+  ip:
+    null,
+
+  mac:
+    null,
+
+  link_speed:
+    null,
+
+  online:
+    false,
+
+  received_at:
+    null,
+
+  mqtt_topic:
+    TELEMETRY_TOPIC
 };
 
-let lastMessageTime = 0;
+let lastMessageTime =
+  0;
 
 // ============================================================
 // SSE CLIENTS
 // ============================================================
 
-const sseClients = new Set();
+const sseClients =
+  new Set();
 
 function broadcastWeather()
 {
   const payload =
     `data: ${JSON.stringify(latestWeather)}\n\n`;
 
-  for (const client of sseClients)
+  for (
+    const client
+    of sseClients
+  )
   {
     try
     {
-      client.write(payload);
+      client.write(
+        payload
+      );
     }
     catch (error)
     {
       console.error(
-        "SSE error:",
+        "SSE write error:",
         error.message
       );
     }
@@ -91,42 +163,86 @@ function broadcastWeather()
 }
 
 // ============================================================
-// MQTT
+// STARTUP INFO
 // ============================================================
 
 console.log();
-console.log("======================================");
-console.log("WEATHER STATION BACKEND");
-console.log("======================================");
-console.log("Broker:", MQTT_BROKER);
+console.log(
+  "======================================"
+);
+
+console.log(
+  "WEATHER STATION BACKEND"
+);
+
+console.log(
+  "======================================"
+);
+
+console.log(
+  "MQTT Broker:"
+);
+
+console.log(
+  MQTT_BROKER
+);
+
+console.log(
+  "MQTT Username:"
+);
+
+console.log(
+  MQTT_USERNAME
+);
+
 console.log();
+
+// ============================================================
+// MQTT CLIENT
+// ============================================================
 
 const mqttClient =
   mqtt.connect(
     MQTT_BROKER,
     {
+      username:
+        MQTT_USERNAME,
+
+      password:
+        MQTT_PASSWORD,
+
       clientId:
         "WeatherServer_" +
         Math.random()
           .toString(16)
           .substring(2, 10),
 
-      clean: true,
-      reconnectPeriod: 3000,
-      connectTimeout: 10000,
-      keepalive: 30
+      clean:
+        true,
+
+      reconnectPeriod:
+        3000,
+
+      connectTimeout:
+        10000,
+
+      keepalive:
+        30
     }
   );
 
 // ============================================================
-// MQTT CONNECT
+// MQTT CONNECTED
 // ============================================================
 
 mqttClient.on(
   "connect",
   () =>
   {
-    console.log("MQTT CONNECTED");
+    console.log();
+    console.log(
+      "PRIVATE EMQX MQTT CONNECTED"
+    );
 
     mqttClient.subscribe(
       [
@@ -141,16 +257,25 @@ mqttClient.on(
         if (error)
         {
           console.error(
-            "Subscribe failed:",
+            "MQTT subscribe failed:",
             error.message
           );
 
           return;
         }
 
-        console.log("Subscribed:");
-        console.log(TELEMETRY_TOPIC);
-        console.log(STATUS_TOPIC);
+        console.log(
+          "Subscribed:"
+        );
+
+        console.log(
+          TELEMETRY_TOPIC
+        );
+
+        console.log(
+          STATUS_TOPIC
+        );
+
         console.log();
       }
     );
@@ -158,7 +283,7 @@ mqttClient.on(
 );
 
 // ============================================================
-// MQTT MESSAGE
+// MQTT MESSAGE HANDLER
 // ============================================================
 
 mqttClient.on(
@@ -168,17 +293,25 @@ mqttClient.on(
     const raw =
       buffer.toString();
 
-    console.log("MQTT RX:");
-    console.log(raw);
+    console.log();
+    console.log(
+      "MQTT RX:"
+    );
+
+    console.log(
+      raw
+    );
 
     try
     {
       const data =
-        JSON.parse(raw);
+        JSON.parse(
+          raw
+        );
 
-      // ------------------------------------------------------
+      // ======================================================
       // TELEMETRY
-      // ------------------------------------------------------
+      // ======================================================
 
       if (
         topic ===
@@ -188,7 +321,8 @@ mqttClient.on(
         lastMessageTime =
           Date.now();
 
-        latestWeather = {
+        latestWeather =
+        {
           ...latestWeather,
 
           station:
@@ -231,17 +365,25 @@ mqttClient.on(
             data.mac ??
             latestWeather.mac,
 
+          link_speed:
+            data.link_speed ??
+            latestWeather.link_speed,
+
           online:
             true,
 
           received_at:
-            new Date().toISOString(),
+            new Date()
+              .toISOString(),
 
           mqtt_topic:
             topic
         };
 
-        console.log("Weather data updated.");
+        console.log(
+          "Weather data updated."
+        );
+
         console.log(
           "Temperature:",
           latestWeather.temperature
@@ -276,20 +418,19 @@ mqttClient.on(
           "IP:",
           latestWeather.ip
         );
-
-        console.log();
       }
 
-      // ------------------------------------------------------
+      // ======================================================
       // STATUS
-      // ------------------------------------------------------
+      // ======================================================
 
       if (
         topic ===
         STATUS_TOPIC
       )
       {
-        latestWeather = {
+        latestWeather =
+        {
           ...latestWeather,
 
           station:
@@ -331,7 +472,7 @@ mqttClient.on(
     catch (error)
     {
       console.error(
-        "Invalid JSON:",
+        "Invalid MQTT JSON:",
         error.message
       );
     }
@@ -373,14 +514,26 @@ mqttClient.on(
   }
 );
 
+mqttClient.on(
+  "close",
+  () =>
+  {
+    console.log(
+      "MQTT connection closed"
+    );
+  }
+);
+
 // ============================================================
-// OFFLINE CHECK
+// STATION OFFLINE CHECK
 // ============================================================
 
 setInterval(
   () =>
   {
-    if (lastMessageTime === 0)
+    if (
+      lastMessageTime === 0
+    )
     {
       return;
     }
@@ -424,19 +577,24 @@ app.get(
   "/",
   (req, res) =>
   {
-    res.json({
-      service:
-        "WT32 Weather Station Backend",
+    res.json(
+      {
+        service:
+          "WT32 Weather Station Backend",
 
-      status:
-        "running",
+        status:
+          "running",
 
-      station:
-        STATION_ID,
+        station:
+          STATION_ID,
 
-      mqtt_connected:
-        mqttClient.connected
-    });
+        mqtt_connected:
+          mqttClient.connected,
+
+        broker:
+          "Private EMQX TLS"
+      }
+    );
   }
 );
 
@@ -448,21 +606,25 @@ app.get(
   "/health",
   (req, res) =>
   {
-    res.json({
-      ok: true,
+    res.json(
+      {
+        ok:
+          true,
 
-      mqtt_connected:
-        mqttClient.connected,
+        mqtt_connected:
+          mqttClient.connected,
 
-      station_online:
-        latestWeather.online,
+        station_online:
+          latestWeather.online,
 
-      last_message:
-        latestWeather.received_at,
+        last_message:
+          latestWeather.received_at,
 
-      server_time:
-        new Date().toISOString()
-    });
+        server_time:
+          new Date()
+            .toISOString()
+      }
+    );
   }
 );
 
@@ -541,7 +703,81 @@ app.get(
 );
 
 // ============================================================
-// START SERVER
+// COMMAND TEST ENDPOINT
+// ============================================================
+//
+// This is useful later.
+// We are NOT enabling reboot or OTA yet.
+//
+
+app.post(
+  "/api/command",
+  (req, res) =>
+  {
+    const command =
+      req.body.command;
+
+    if (!command)
+    {
+      return res.status(400).json(
+        {
+          ok: false,
+          error:
+            "command is required"
+        }
+      );
+    }
+
+    if (
+      !mqttClient.connected
+    )
+    {
+      return res.status(503).json(
+        {
+          ok: false,
+          error:
+            "MQTT not connected"
+        }
+      );
+    }
+
+    mqttClient.publish(
+      COMMAND_TOPIC,
+      String(command),
+      {
+        qos: 0,
+        retain: false
+      },
+      (error) =>
+      {
+        if (error)
+        {
+          return res.status(500).json(
+            {
+              ok: false,
+              error:
+                error.message
+            }
+          );
+        }
+
+        res.json(
+          {
+            ok: true,
+            command:
+              command,
+
+            topic:
+              COMMAND_TOPIC
+          }
+        );
+      }
+    );
+  }
+);
+
+// ============================================================
+// START HTTP SERVER
 // ============================================================
 
 app.listen(
