@@ -1,348 +1,427 @@
-import express from "express";
-import cors from "cors";
-import mqtt from "mqtt";
+require("dotenv").config();
 
-const PORT = process.env.PORT || 3000;
-
-const MQTT_BROKER = process.env.MQTT_BROKER;
-const MQTT_USERNAME = process.env.MQTT_USERNAME;
-const MQTT_PASSWORD = process.env.MQTT_PASSWORD;
-
-// Protects HTTP OTA requests from your admin client.
-// Do not put this in a public GitHub Pages JavaScript file.
-const OTA_API_TOKEN = process.env.OTA_API_TOKEN;
-
-// JSON map: station ID -> OTA secret.
-// Example:
-// {"GJ-01":"secret1","GJ-02":"secret2"}
-const OTA_DEVICE_SECRETS_JSON =
-  process.env.OTA_DEVICE_SECRETS_JSON || "{}";
-
-let otaSecrets = {};
-
-try {
-  otaSecrets = JSON.parse(OTA_DEVICE_SECRETS_JSON);
-} catch {
-  console.error("OTA_DEVICE_SECRETS_JSON is invalid JSON.");
-}
+const express = require("express");
+const mqtt = require("mqtt");
+const path = require("path");
 
 const app = express();
 
-app.use(cors());
 app.use(express.json());
+app.use(express.static(path.join(__dirname, "public")));
 
-const stations = {};
-const sseClients = new Set();
+const PORT = Number(process.env.PORT || 3000);
 
-function ensureStation(id) {
-  if (!stations[id]) {
-    stations[id] = {
-      station_id: id,
-      station_name: id,
-      location: "",
-      temperature: null,
-      pressure: null,
-      rain: null,
-      wind_speed: null,
-      firmware: null,
-      counter: null,
-      uptime: null,
-      ip: null,
-      mac: null,
-      link_speed: null,
-      online: false,
-      received_at: null,
-      ota: {
-        status: "idle",
-        requested_version: null,
-        requested_at: null,
-        last_device_message: null
-      }
-    };
-  }
-  return stations[id];
-}
+const stations = new Map();
+const logs = [];
+const MAX_LOGS = 500;
+const clients = new Set();
 
-function broadcast() {
-  const payload = `data: ${JSON.stringify({
-    stations,
-    server_time: new Date().toISOString()
-  })}\n\n`;
+function broadcast(type, data) {
+  const packet =
+    `event: ${type}\n` +
+    `data: ${JSON.stringify(data)}\n\n`;
 
-  for (const res of sseClients) {
+  for (const client of clients) {
     try {
-      res.write(payload);
-    } catch {}
-  }
-}
-
-function stationFromTopic(topic) {
-  // weather/GJ-01/telemetry
-  const p = topic.split("/");
-  if (p.length < 3 || p[0] !== "weather")
-    return null;
-  return p[1];
-}
-
-const mqttClient = mqtt.connect(
-  MQTT_BROKER,
-  {
-    username: MQTT_USERNAME,
-    password: MQTT_PASSWORD,
-    clientId:
-      "WeatherServer_" +
-      Math.random().toString(16).substring(2, 10),
-    clean: true,
-    reconnectPeriod: 3000,
-    connectTimeout: 10000,
-    keepalive: 30
-  }
-);
-
-mqttClient.on("connect", () => {
-  console.log("PRIVATE EMQX MQTT CONNECTED");
-
-  mqttClient.subscribe(
-    [
-      "weather/+/telemetry",
-      "weather/+/status",
-      "weather/+/ota/status"
-    ],
-    { qos: 0 },
-    (err) => {
-      if (err) console.error("Subscribe error:", err.message);
-      else console.log("Subscribed to all weather stations.");
+      client.write(packet);
+    } catch (_) {
+      clients.delete(client);
     }
+  }
+}
+
+function addLog(level, source, message) {
+  const entry = {
+    time: new Date().toISOString(),
+    level,
+    source,
+    message
+  };
+
+  logs.push(entry);
+
+  while (logs.length > MAX_LOGS) {
+    logs.shift();
+  }
+
+  console.log(
+    `[${entry.time}] [${level}] [${source}] ${message}`
   );
-});
 
-mqttClient.on("message", (topic, buffer) => {
-  const id = stationFromTopic(topic);
-  if (!id) return;
-
-  let data;
-
-  try {
-    data = JSON.parse(buffer.toString());
-  } catch {
-    console.error("Invalid JSON on", topic);
-    return;
-  }
-
-  const st = ensureStation(id);
-
-  if (topic.endsWith("/telemetry")) {
-    Object.assign(st, {
-      station_id: data.station_id ?? data.station ?? id,
-      station_name: data.station_name ?? st.station_name,
-      location: data.location ?? st.location,
-      temperature: data.temperature ?? st.temperature,
-      pressure: data.pressure ?? st.pressure,
-      rain: data.rain ?? st.rain,
-      wind_speed: data.wind_speed ?? st.wind_speed,
-      firmware: data.firmware ?? st.firmware,
-      counter: data.counter ?? st.counter,
-      uptime: data.uptime ?? st.uptime,
-      ip: data.ip ?? st.ip,
-      mac: data.mac ?? st.mac,
-      link_speed: data.link_speed ?? st.link_speed,
-      online: true,
-      received_at: new Date().toISOString()
-    });
-  }
-
-  if (topic.endsWith("/status") && !topic.endsWith("/ota/status")) {
-    Object.assign(st, {
-      station_id: data.station_id ?? id,
-      station_name: data.station_name ?? st.station_name,
-      location: data.location ?? st.location,
-      firmware: data.firmware ?? st.firmware,
-      uptime: data.uptime ?? st.uptime,
-      ip: data.ip ?? st.ip,
-      mac: data.mac ?? st.mac,
-      link_speed: data.link_speed ?? st.link_speed,
-      online: data.online ?? st.online
-    });
-  }
-
-  if (topic.endsWith("/ota/status")) {
-    st.ota = {
-      ...st.ota,
-      status: data.status ?? st.ota.status,
-      last_device_message: data,
-      updated_at: new Date().toISOString()
-    };
-  }
-
-  broadcast();
-});
-
-mqttClient.on("error", err =>
-  console.error("MQTT error:", err.message)
-);
-
-setInterval(() => {
-  const now = Date.now();
-  let changed = false;
-
-  for (const st of Object.values(stations)) {
-    if (
-      st.online &&
-      st.received_at &&
-      now - Date.parse(st.received_at) > 30000
-    ) {
-      st.online = false;
-      changed = true;
-    }
-  }
-
-  if (changed) broadcast();
-}, 5000);
-
-function checkToken(req, res, next) {
-  if (!OTA_API_TOKEN) {
-    return res.status(503).json({
-      ok: false,
-      error: "OTA_API_TOKEN not configured"
-    });
-  }
-
-  if (req.headers.authorization !== `Bearer ${OTA_API_TOKEN}`) {
-    return res.status(403).json({
-      ok: false,
-      error: "Invalid API token"
-    });
-  }
-
-  next();
+  broadcast("log", entry);
 }
-
-app.get("/", (req, res) => {
-  res.json({
-    service: "WT32 Multi-Station Weather Backend",
-    mqtt_connected: mqttClient.connected,
-    station_count: Object.keys(stations).length
-  });
-});
 
 app.get("/health", (req, res) => {
   res.json({
     ok: true,
     mqtt_connected: mqttClient.connected,
-    station_count: Object.keys(stations).length,
-    server_time: new Date().toISOString()
+    stations: stations.size,
+    uptime_seconds: Math.floor(process.uptime())
   });
 });
 
 app.get("/api/stations", (req, res) => {
-  res.json(Object.values(stations));
+  res.json(
+    [...stations.values()].sort((a, b) =>
+      String(a.station_id).localeCompare(
+        String(b.station_id)
+      )
+    )
+  );
 });
 
-app.get("/api/stations/:id", (req, res) => {
-  const st = stations[req.params.id];
+app.get("/api/logs", (req, res) => {
+  const limit = Math.min(
+    Math.max(Number(req.query.limit || 150), 1),
+    MAX_LOGS
+  );
 
-  if (!st) {
-    return res.status(404).json({
-      ok: false,
-      error: "Station not found"
-    });
-  }
-
-  res.json(st);
+  res.json(logs.slice(-limit));
 });
 
-app.get("/api/events", (req, res) => {
+app.get("/events", (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
-  res.setHeader("Access-Control-Allow-Origin", "*");
   res.flushHeaders();
 
+  clients.add(res);
+
   res.write(
+    `event: connected\n` +
     `data: ${JSON.stringify({
-      stations,
-      server_time: new Date().toISOString()
+      ok: true,
+      time: new Date().toISOString()
     })}\n\n`
   );
 
-  sseClients.add(res);
+  const keepAlive = setInterval(() => {
+    try {
+      res.write(": keepalive\n\n");
+    } catch (_) {}
+  }, 25000);
 
   req.on("close", () => {
-    sseClients.delete(res);
+    clearInterval(keepAlive);
+    clients.delete(res);
   });
 });
 
-app.post("/api/ota", checkToken, (req, res) => {
-  const { station_id, version, url } = req.body;
+const MQTT_HOST = process.env.MQTT_HOST;
+const MQTT_PORT = Number(process.env.MQTT_PORT || 8883);
+const MQTT_USERNAME = process.env.MQTT_USERNAME;
+const MQTT_PASSWORD = process.env.MQTT_PASSWORD;
 
-  if (!station_id || !version || !url) {
-    return res.status(400).json({
-      ok: false,
-      error: "station_id, version and url are required"
-    });
+const MQTT_TLS_REJECT_UNAUTHORIZED =
+  String(
+    process.env.MQTT_TLS_REJECT_UNAUTHORIZED || "true"
+  ).toLowerCase() !== "false";
+
+if (!MQTT_HOST) {
+  console.error("MQTT_HOST is missing.");
+}
+
+const mqttClient = mqtt.connect(
+  `mqtts://${MQTT_HOST}:${MQTT_PORT}`,
+  {
+    username: MQTT_USERNAME,
+    password: MQTT_PASSWORD,
+    reconnectPeriod: 5000,
+    connectTimeout: 20000,
+    clean: true,
+    keepalive: 30,
+    clientId:
+      "weather-dashboard-" +
+      Math.random().toString(16).slice(2, 10),
+    rejectUnauthorized:
+      MQTT_TLS_REJECT_UNAUTHORIZED
   }
+);
 
-  const deviceSecret = otaSecrets[station_id];
+mqttClient.on("connect", () => {
+  addLog(
+    "SUCCESS",
+    "MQTT",
+    `Connected to ${MQTT_HOST}:${MQTT_PORT}`
+  );
 
-  if (!deviceSecret) {
-    return res.status(400).json({
-      ok: false,
-      error: `No OTA secret configured for ${station_id}`
-    });
-  }
+  const topics = [
+    "weather/+/telemetry",
+    "weather/+/status",
+    "weather/+/ota/status"
+  ];
 
-  if (!mqttClient.connected) {
-    return res.status(503).json({
-      ok: false,
-      error: "MQTT not connected"
-    });
-  }
-
-  const topic = `weather/${station_id}/ota`;
-
-  const command = {
-    command: "ota",
-    station: station_id,
-    version,
-    url,
-    secret: deviceSecret,
-    requested_at: new Date().toISOString()
-  };
-
-  mqttClient.publish(
-    topic,
-    JSON.stringify(command),
-    { qos: 1, retain: false },
-    err => {
-      if (err) {
-        return res.status(500).json({
-          ok: false,
-          error: err.message
-        });
+  mqttClient.subscribe(
+    topics,
+    { qos: 0 },
+    error => {
+      if (error) {
+        addLog(
+          "ERROR",
+          "MQTT",
+          `Subscribe failed: ${error.message}`
+        );
+        return;
       }
 
-      const st = ensureStation(station_id);
-
-      st.ota = {
-        ...st.ota,
-        status: "command_sent",
-        requested_version: version,
-        requested_at: new Date().toISOString()
-      };
-
-      broadcast();
-
-      res.json({
-        ok: true,
-        status: "command_sent",
-        station_id,
-        version,
-        topic
-      });
+      addLog(
+        "SUCCESS",
+        "MQTT",
+        "Subscribed to all weather stations"
+      );
     }
   );
 });
 
-app.listen(PORT, () => {
-  console.log(`HTTP server running on port ${PORT}`);
+mqttClient.on("reconnect", () => {
+  addLog(
+    "WARN",
+    "MQTT",
+    "Reconnecting to broker..."
+  );
 });
+
+mqttClient.on("offline", () => {
+  addLog(
+    "WARN",
+    "MQTT",
+    "MQTT client is offline"
+  );
+});
+
+mqttClient.on("close", () => {
+  addLog(
+    "WARN",
+    "MQTT",
+    "Broker connection closed"
+  );
+});
+
+mqttClient.on("error", error => {
+  addLog(
+    "ERROR",
+    "MQTT",
+    error.message
+  );
+});
+
+mqttClient.on("message", (topic, buffer) => {
+  const raw = buffer.toString();
+
+  addLog(
+    "RX",
+    topic,
+    raw.length > 800
+      ? raw.substring(0, 800) + "..."
+      : raw
+  );
+
+  try {
+    const parts = topic.split("/");
+
+    if (
+      parts.length < 3 ||
+      parts[0] !== "weather"
+    ) {
+      return;
+    }
+
+    const stationID = parts[1];
+    const messageType =
+      parts.slice(2).join("/");
+
+    const data = JSON.parse(raw);
+
+    const current =
+      stations.get(stationID) || {
+        station_id: stationID,
+        station_name: stationID,
+        location: "",
+        online: false,
+        last_seen: null
+      };
+
+    const station = {
+      ...current,
+      station_id: stationID,
+      station_name:
+        data.station_name ||
+        current.station_name ||
+        stationID,
+      location:
+        data.location ||
+        current.location ||
+        "",
+      last_seen:
+        new Date().toISOString()
+    };
+
+    if (messageType === "telemetry") {
+      station.online = true;
+
+      station.temperature =
+        data.temperature ??
+        station.temperature ??
+        null;
+
+      station.pressure =
+        data.pressure ??
+        station.pressure ??
+        null;
+
+      station.rain =
+        data.rain ??
+        station.rain ??
+        null;
+
+      station.wind_speed =
+        data.wind_speed ??
+        station.wind_speed ??
+        null;
+
+      station.firmware =
+        data.firmware ||
+        station.firmware ||
+        null;
+
+      station.ip =
+        data.ip ||
+        station.ip ||
+        null;
+
+      station.mac =
+        data.mac ||
+        station.mac ||
+        null;
+
+      station.link_speed =
+        data.link_speed ??
+        station.link_speed ??
+        null;
+
+      addLog(
+        "INFO",
+        stationID,
+        `Telemetry | Temp=${data.temperature ?? "--"} C | Pressure=${data.pressure ?? "--"} hPa | Wind=${data.wind_speed ?? "--"} m/s | Rain=${data.rain ?? "--"}`
+      );
+    }
+
+    else if (messageType === "status") {
+      station.online =
+        typeof data.online === "boolean"
+          ? data.online
+          : true;
+
+      station.firmware =
+        data.firmware ||
+        station.firmware ||
+        null;
+
+      station.ip =
+        data.ip ||
+        station.ip ||
+        null;
+
+      station.mac =
+        data.mac ||
+        station.mac ||
+        null;
+
+      station.link_speed =
+        data.link_speed ??
+        station.link_speed ??
+        null;
+
+      addLog(
+        "INFO",
+        stationID,
+        `Status | ${station.online ? "ONLINE" : "OFFLINE"}`
+      );
+    }
+
+    else if (messageType === "ota/status") {
+      station.ota_status =
+        data.status || null;
+
+      station.ota_message =
+        data.message || null;
+
+      addLog(
+        "OTA",
+        stationID,
+        `OTA | ${data.status ?? "--"} | ${data.message ?? ""}`
+      );
+    }
+
+    stations.set(
+      stationID,
+      station
+    );
+
+    broadcast(
+      "station",
+      station
+    );
+  }
+
+  catch (error) {
+    addLog(
+      "ERROR",
+      "MQTT",
+      `Message processing failed: ${error.message}`
+    );
+  }
+});
+
+setInterval(() => {
+  const now = Date.now();
+
+  for (
+    const [stationID, station]
+    of stations
+  ) {
+    if (!station.last_seen) {
+      continue;
+    }
+
+    const lastSeen =
+      new Date(
+        station.last_seen
+      ).getTime();
+
+    if (
+      now - lastSeen > 75000 &&
+      station.online
+    ) {
+      station.online = false;
+
+      stations.set(
+        stationID,
+        station
+      );
+
+      addLog(
+        "WARN",
+        stationID,
+        "Station marked OFFLINE: no MQTT message for 75 seconds"
+      );
+
+      broadcast(
+        "station",
+        station
+      );
+    }
+  }
+}, 15000);
+
+app.listen(
+  PORT,
+  "0.0.0.0",
+  () => {
+    addLog(
+      "SUCCESS",
+      "SERVER",
+      `Weather dashboard running on port ${PORT}`
+    );
+  }
+);
