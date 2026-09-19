@@ -1,30 +1,5866 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
+
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Weather Station Network</title>
+
+<meta charset="UTF-8">
+
+<meta
+  name="viewport"
+  content="width=device-width, initial-scale=1.0"
+>
+
+<title>Weather Stations</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
 <style>
-*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#101113;color:#f7f7f7}header{background:#19130f;border-bottom:3px solid #ff7a00;padding:20px}header h1{margin:0;color:#ff8a1f}header p{color:#bba793;margin:5px 0 0}main{max-width:1500px;margin:auto;padding:18px}.summary{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px}.summary-card{min-width:145px;background:#201914;border:1px solid #503821;border-radius:12px;padding:13px}.summary-card strong{display:block;font-size:27px;color:#ff922b}.layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(360px,.72fr);gap:16px}.panel{background:#1b1713;border:1px solid #4d3725;border-radius:14px;overflow:hidden}.panel-header{padding:14px 16px;border-bottom:1px solid #463221;display:flex;justify-content:space-between;gap:12px;align-items:center}.panel-header h2{margin:0;font-size:18px;color:#ff922b}.stations{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;padding:14px}.card{background:#211912;border:1px solid #543a21;border-radius:12px;padding:14px}.card.offline{opacity:.6}.top{display:flex;justify-content:space-between;gap:10px}.station-id{font-size:21px;font-weight:bold;color:#ff922b}.location{color:#a99583;margin-top:3px;font-size:13px}.badge{border-radius:999px;padding:5px 9px;height:max-content;font-size:11px;font-weight:bold}.on{background:#16351f;color:#78ef99}.off{background:#3b1b1b;color:#ff8e8e}.metrics{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:13px}.metric{background:#15110e;border:1px solid #392a1f;border-radius:9px;padding:10px}.metric small{color:#a99583}.metric strong{display:block;color:#ffd0a0;margin-top:5px}.meta{margin-top:11px;color:#978675;font-size:12px;line-height:1.5}.log-toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}button,select{border:1px solid #614329;background:#17110d;color:#fff;border-radius:7px;padding:8px 10px}button{cursor:pointer;background:#a64e08}#logs{height:620px;overflow:auto;padding:10px;font-family:Consolas,Monaco,monospace;font-size:12px;background:#0b0d0e}.log-line{padding:5px 7px;border-bottom:1px solid #1c2225;white-space:pre-wrap;overflow-wrap:anywhere}.log-time{color:#7f929c}.log-source{color:#d8b38d}.level-SUCCESS{color:#7ff09d}.level-ERROR{color:#ff7575}.level-WARN{color:#ffc66d}.level-RX{color:#70c7ff}.level-OTA{color:#d79cff}.level-INFO{color:#ddd}.live-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#5b5b5b;margin-right:6px}.live-dot.connected{background:#59e47b}.empty{color:#aa9886;padding:20px}@media(max-width:1000px){.layout{grid-template-columns:1fr}#logs{height:420px}}
+
+/* ============================================================
+   ROOT
+   ============================================================ */
+
+:root {
+
+  --bg: #040b12;
+
+  --panel: #08121b;
+
+  --panel2: #0b1822;
+
+  --orange: #ff9f3f;
+
+  --orange2: #ff7b00;
+
+  --cyan: #00d2ff;
+
+  --green: #23ff9a;
+
+  --red: #ff5470;
+
+  --yellow: #ffd54a;
+
+  --purple: #a259ff;
+
+  --text: #e7f5ff;
+
+  --muted: #8fb3c7;
+
+  --border: #1a3a4f;
+
+  --shadow:
+    0 0 0 1px
+    rgba(0,210,255,0.08),
+
+    0 12px 32px
+    rgba(0,0,0,0.40);
+}
+
+
+/* ============================================================
+   GLOBAL
+   ============================================================ */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+
+  margin: 0;
+
+  padding: 0;
+
+  min-height: 100%;
+
+  font-family:
+    Arial,
+    Helvetica,
+    sans-serif;
+
+  background:
+    var(--bg);
+
+  color:
+    var(--text);
+}
+
+body {
+
+  position: relative;
+
+  overflow-x: hidden;
+
+  background:
+
+    radial-gradient(
+      circle at top left,
+      rgba(0,210,255,0.06),
+      transparent 25%
+    ),
+
+    radial-gradient(
+      circle at bottom right,
+      rgba(255,123,0,0.06),
+      transparent 25%
+    ),
+
+    linear-gradient(
+      180deg,
+      #02070b 0%,
+      #06121b 45%,
+      #030911 100%
+    );
+}
+
+
+/* ============================================================
+   BACKGROUND LOGO
+   ============================================================ */
+
+body::before {
+
+  content: "";
+
+  position: fixed;
+
+  inset: 0;
+
+  background-image:
+    url("/bg-logo.png");
+
+  background-repeat:
+    no-repeat;
+
+  background-position:
+    center center;
+
+  background-size:
+    620px auto;
+
+  opacity:
+    0.10;
+
+  filter:
+    drop-shadow(
+      0 0 22px
+      rgba(255,123,0,0.20)
+    );
+
+  pointer-events:
+    none;
+
+  z-index:
+    0;
+}
+
+
+body::after {
+
+  content: "";
+
+  position: fixed;
+
+  inset: 0;
+
+  pointer-events:
+    none;
+
+  background:
+
+    linear-gradient(
+      transparent 97%,
+      rgba(0,210,255,0.05) 100%
+    ),
+
+    linear-gradient(
+      90deg,
+      transparent 97%,
+      rgba(0,210,255,0.04) 100%
+    );
+
+  background-size:
+    100% 28px,
+    28px 100%;
+
+  opacity:
+    0.08;
+
+  z-index:
+    0;
+}
+
+
+/* ============================================================
+   APP
+   ============================================================ */
+
+.app {
+
+  position: relative;
+
+  z-index: 1;
+
+  max-width:
+    1600px;
+
+  margin:
+    0 auto;
+
+  padding:
+    18px;
+}
+
+
+/* ============================================================
+   NEW HEADER
+   ============================================================ */
+
+.topbar {
+
+  margin-bottom:
+    18px;
+
+  padding:
+    0;
+
+  background:
+
+    linear-gradient(
+      135deg,
+      rgba(6,18,28,0.97),
+      rgba(4,10,17,0.98)
+    );
+
+  border:
+    1px solid
+    rgba(0,210,255,0.18);
+
+  border-top:
+    3px solid
+    var(--orange2);
+
+  border-radius:
+    20px;
+
+  box-shadow:
+    var(--shadow);
+
+  overflow:
+    hidden;
+}
+
+
+.brand-wrap {
+
+  display:
+    flex;
+
+  justify-content:
+    space-between;
+
+  align-items:
+    center;
+
+  gap:
+    16px;
+
+  padding:
+    15px 20px;
+
+  background:
+
+    linear-gradient(
+      90deg,
+      rgba(255,123,0,0.08),
+      rgba(0,210,255,0.04),
+      transparent
+    );
+}
+
+
+.brand-left {
+
+  display:
+    flex;
+
+  align-items:
+    center;
+
+  gap:
+    16px;
+}
+
+
+.logo-box {
+
+  width:
+    66px;
+
+  height:
+    66px;
+
+  display:
+    flex;
+
+  align-items:
+    center;
+
+  justify-content:
+    center;
+
+  flex-shrink:
+    0;
+
+  border-radius:
+    16px;
+
+  background:
+
+    linear-gradient(
+      180deg,
+      rgba(255,159,63,0.09),
+      rgba(0,210,255,0.04)
+    );
+
+  border:
+    1px solid
+    rgba(255,159,63,0.25);
+
+  box-shadow:
+
+    0 0 20px
+    rgba(255,123,0,0.10);
+}
+
+
+.brand-logo {
+
+  width:
+    50px;
+
+  height:
+    50px;
+
+  object-fit:
+    contain;
+
+  filter:
+
+    drop-shadow(
+      0 0 9px
+      rgba(255,123,0,0.25)
+    );
+}
+
+
+.title-wrap h1 {
+
+  margin:
+    0;
+
+  color:
+    var(--orange);
+
+  font-size:
+    25px;
+
+  font-weight:
+    800;
+
+  letter-spacing:
+    0.4px;
+}
+
+
+.title-wrap p {
+
+  margin:
+    5px 0 0;
+
+  color:
+    var(--muted);
+
+  font-size:
+    13px;
+}
+
+
+/* ============================================================
+   BUTTON
+   ============================================================ */
+
+.btn {
+
+  border:
+    none;
+
+  outline:
+    none;
+
+  cursor:
+    pointer;
+
+  border-radius:
+    11px;
+
+  padding:
+    10px 14px;
+
+  font-size:
+    13px;
+
+  font-weight:
+    700;
+
+  transition:
+    0.18s ease;
+}
+
+
+.btn:hover {
+
+  transform:
+    translateY(-1px);
+
+  filter:
+    brightness(1.08);
+}
+
+
+.btn-primary {
+
+  background:
+
+    linear-gradient(
+      180deg,
+      #123346,
+      #0a2534
+    );
+
+  color:
+    #9feeff;
+
+  border:
+    1px solid
+    rgba(0,210,255,0.25);
+}
+
+
+.btn-orange {
+
+  background:
+
+    linear-gradient(
+      180deg,
+      #c96b08,
+      #8f4700
+    );
+
+  color:
+    #fff3e1;
+
+  border:
+    1px solid
+    rgba(255,159,63,0.35);
+}
+
+
+.btn-yellow {
+
+  background:
+
+    linear-gradient(
+      180deg,
+      #8b7200,
+      #594900
+    );
+
+  color:
+    #ffe595;
+
+  border:
+    1px solid
+    rgba(255,213,74,0.30);
+}
+
+
+.btn-red {
+
+  background:
+
+    linear-gradient(
+      180deg,
+      #55111e,
+      #2b0a12
+    );
+
+  color:
+    #ff8fa1;
+
+  border:
+    1px solid
+    rgba(255,84,112,0.30);
+}
+
+
+.btn-green {
+
+  background:
+
+    linear-gradient(
+      180deg,
+      #0f4630,
+      #09281c
+    );
+
+  color:
+    #7ff7ba;
+
+  border:
+    1px solid
+    rgba(35,255,154,0.25);
+}
+
+
+.btn-ghost {
+
+  background:
+    rgba(255,255,255,0.03);
+
+  color:
+    #d9edf8;
+
+  border:
+    1px solid
+    rgba(255,255,255,0.10);
+}
+
+
+/* ============================================================
+   SUMMARY
+   ============================================================ */
+
+.summary {
+
+  display:
+    grid;
+
+  grid-template-columns:
+    repeat(
+      4,
+      minmax(180px,1fr)
+    );
+
+  gap:
+    14px;
+
+  margin-bottom:
+    18px;
+}
+
+
+.summary-card {
+
+  background:
+
+    linear-gradient(
+      180deg,
+      rgba(6,19,28,0.92),
+      rgba(5,14,21,0.96)
+    );
+
+  border:
+    1px solid
+    rgba(0,210,255,0.20);
+
+  border-radius:
+    16px;
+
+  padding:
+    16px;
+
+  box-shadow:
+    var(--shadow);
+}
+
+
+.summary-card .label {
+
+  color:
+    #d2e8f4;
+
+  font-size:
+    13px;
+
+  margin-bottom:
+    10px;
+}
+
+
+.summary-card .value {
+
+  font-size:
+    25px;
+
+  font-weight:
+    700;
+
+  color:
+    var(--orange);
+}
+
+
+/* ============================================================
+   MAIN LAYOUT
+   ============================================================ */
+
+.layout {
+
+  display:
+    grid;
+
+  grid-template-columns:
+    1.25fr 0.95fr;
+
+  gap:
+    16px;
+
+  align-items:
+    start;
+}
+
+
+/* ============================================================
+   PANEL
+   ============================================================ */
+
+.panel {
+
+  background:
+
+    linear-gradient(
+      180deg,
+      rgba(8,18,27,0.96),
+      rgba(4,10,17,0.98)
+    );
+
+  border:
+    1px solid
+    rgba(255,159,63,0.25);
+
+  border-radius:
+    18px;
+
+  box-shadow:
+    var(--shadow);
+
+  overflow:
+    hidden;
+}
+
+
+.panel-header {
+
+  display:
+    flex;
+
+  justify-content:
+    space-between;
+
+  align-items:
+    center;
+
+  gap:
+    12px;
+
+  padding:
+    14px 16px;
+
+  border-bottom:
+    1px solid
+    rgba(255,159,63,0.18);
+
+  background:
+
+    linear-gradient(
+      180deg,
+      rgba(255,123,0,0.06),
+      rgba(0,0,0,0.02)
+    );
+}
+
+
+.panel-header h2 {
+
+  margin:
+    0;
+
+  color:
+    var(--orange);
+
+  font-size:
+    18px;
+}
+
+
+.header-actions {
+
+  display:
+    flex;
+
+  align-items:
+    center;
+
+  gap:
+    10px;
+
+  flex-wrap:
+    wrap;
+}
+
+
+/* ============================================================
+   CONNECTION
+   ============================================================ */
+
+.connection-indicator {
+
+  display:
+    inline-flex;
+
+  align-items:
+    center;
+
+  gap:
+    8px;
+
+  color:
+    #dff7ff;
+
+  font-weight:
+    600;
+
+  font-size:
+    13px;
+}
+
+
+.connection-dot {
+
+  width:
+    10px;
+
+  height:
+    10px;
+
+  border-radius:
+    50%;
+
+  background:
+    var(--green);
+
+  box-shadow:
+    0 0 10px
+    var(--green);
+}
+
+
+.connection-dot.off {
+
+  background:
+    var(--red);
+
+  box-shadow:
+    0 0 10px
+    var(--red);
+}
+
+
+/* ============================================================
+   STATIONS
+   ============================================================ */
+
+.stations-grid {
+
+  display:
+    grid;
+
+  grid-template-columns:
+
+    repeat(
+      auto-fit,
+      minmax(320px,1fr)
+    );
+
+  gap:
+    14px;
+
+  padding:
+    14px;
+}
+
+
+.station-card {
+
+  background:
+
+    linear-gradient(
+      180deg,
+      rgba(7,16,24,0.96),
+      rgba(2,9,14,0.98)
+    );
+
+  border:
+    1px solid
+    rgba(255,159,63,0.22);
+
+  border-radius:
+    18px;
+
+  padding:
+    14px;
+
+  position:
+    relative;
+
+  cursor:
+    pointer;
+
+  transition:
+    0.18s ease;
+
+  box-shadow:
+    0 6px 18px
+    rgba(0,0,0,0.28);
+}
+
+
+.station-card:hover {
+
+  transform:
+    translateY(-2px);
+
+  border-color:
+    rgba(0,210,255,0.35);
+
+  box-shadow:
+
+    0 0 0 1px
+    rgba(0,210,255,0.18),
+
+    0 0 20px
+    rgba(0,210,255,0.08);
+}
+
+
+.station-card::after {
+
+  content:
+    "Click card for details";
+
+  position:
+    absolute;
+
+  right:
+    14px;
+
+  bottom:
+    9px;
+
+  font-size:
+    10px;
+
+  color:
+    #607d8d;
+}
+
+
+.station-top {
+
+  display:
+    flex;
+
+  justify-content:
+    space-between;
+
+  align-items:
+    flex-start;
+
+  gap:
+    12px;
+
+  margin-bottom:
+    10px;
+}
+
+
+.station-name {
+
+  margin:
+    0;
+
+  font-size:
+    20px;
+
+  color:
+    var(--orange);
+
+  line-height:
+    1.1;
+}
+
+
+.station-sub {
+
+  margin-top:
+    4px;
+
+  color:
+    #d5b99c;
+
+  font-size:
+    13px;
+
+  line-height:
+    1.4;
+}
+
+
+/* ============================================================
+   STATUS BADGES
+   ============================================================ */
+
+.station-status {
+
+  display:
+    inline-flex;
+
+  align-items:
+    center;
+
+  justify-content:
+    center;
+
+  padding:
+    6px 12px;
+
+  border-radius:
+    999px;
+
+  font-size:
+    11px;
+
+  font-weight:
+    700;
+
+  letter-spacing:
+    0.5px;
+}
+
+
+.online {
+
+  color:
+    var(--green);
+
+  background:
+    rgba(35,255,154,0.10);
+
+  border:
+    1px solid
+    rgba(35,255,154,0.25);
+}
+
+
+.offline {
+
+  color:
+    var(--red);
+
+  background:
+    rgba(255,84,112,0.10);
+
+  border:
+    1px solid
+    rgba(255,84,112,0.20);
+}
+
+
+/* ============================================================
+   METRICS
+   ============================================================ */
+
+.metrics {
+
+  display:
+    grid;
+
+  grid-template-columns:
+    1fr 1fr;
+
+  gap:
+    10px;
+
+  margin:
+    12px 0;
+}
+
+
+.metric {
+
+  background:
+    rgba(5,18,27,0.95);
+
+  border:
+    1px solid
+    rgba(0,210,255,0.18);
+
+  border-radius:
+    14px;
+
+  padding:
+    12px;
+}
+
+
+.metric small {
+
+  display:
+    block;
+
+  color:
+    var(--muted);
+
+  font-size:
+    12px;
+
+  margin-bottom:
+    8px;
+}
+
+
+.metric strong {
+
+  display:
+    block;
+
+  color:
+    #ffd7a6;
+
+  font-size:
+    16px;
+}
+
+
+.station-meta {
+
+  margin-top:
+    10px;
+
+  color:
+    #a5bfd0;
+
+  font-size:
+    12px;
+
+  line-height:
+    1.55;
+}
+
+
+/* ============================================================
+   STATION BUTTONS
+   ============================================================ */
+
+.station-actions {
+
+  display:
+    grid;
+
+  grid-template-columns:
+    1fr 1fr;
+
+  gap:
+    10px;
+
+  margin-top:
+    14px;
+
+  margin-bottom:
+    18px;
+}
+
+
+/* ============================================================
+   LOGS
+   ============================================================ */
+
+.logs-box {
+
+  height:
+    620px;
+
+  overflow:
+    auto;
+
+  padding:
+    12px 16px;
+
+  background:
+
+    linear-gradient(
+      180deg,
+      rgba(2,8,14,0.98),
+      rgba(0,6,10,0.98)
+    );
+
+  font-family:
+    Consolas,
+    Monaco,
+    monospace;
+}
+
+
+.log-item {
+
+  display:
+    grid;
+
+  grid-template-columns:
+    90px 80px 140px 1fr;
+
+  align-items:
+    center;
+
+  gap:
+    10px;
+
+  padding:
+    7px 0;
+
+  border-bottom:
+    1px solid
+    rgba(0,210,255,0.09);
+
+  font-size:
+    12px;
+}
+
+
+.log-time {
+
+  color:
+    #91b8cb;
+}
+
+
+.log-badge {
+
+  min-width:
+    72px;
+
+  text-align:
+    center;
+
+  padding:
+    4px 8px;
+
+  border-radius:
+    8px;
+
+  font-weight:
+    700;
+
+  border:
+    1px solid transparent;
+}
+
+
+.badge-success {
+
+  color:
+    var(--green);
+
+  border-color:
+    rgba(35,255,154,0.25);
+}
+
+
+.badge-online {
+
+  color:
+    var(--green);
+
+  border-color:
+    rgba(35,255,154,0.25);
+}
+
+
+.badge-offline {
+
+  color:
+    var(--red);
+
+  border-color:
+    rgba(255,84,112,0.25);
+}
+
+
+.badge-temp {
+
+  color:
+    var(--orange);
+
+  border-color:
+    rgba(255,123,0,0.28);
+}
+
+
+.badge-wind {
+
+  color:
+    var(--cyan);
+
+  border-color:
+    rgba(0,210,255,0.28);
+}
+
+
+.badge-rain {
+
+  color:
+    #c98aff;
+
+  border-color:
+    rgba(162,89,255,0.28);
+}
+
+
+.badge-warn {
+
+  color:
+    var(--yellow);
+
+  border-color:
+    rgba(255,213,74,0.25);
+}
+
+
+.badge-error {
+
+  color:
+    var(--red);
+
+  border-color:
+    rgba(255,84,112,0.28);
+}
+
+
+.badge-ota {
+
+  color:
+    #7fc6ff;
+
+  border-color:
+    rgba(80,150,255,0.28);
+}
+
+
+.badge-info {
+
+  color:
+    #f5d08c;
+
+  border-color:
+    rgba(245,208,140,0.25);
+}
+
+
+.log-source {
+
+  color:
+    #ffd085;
+
+  font-weight:
+    700;
+}
+
+
+.log-message {
+
+  color:
+    #d9edf8;
+}
+
+
+/* ============================================================
+   SELECT
+   ============================================================ */
+
+select {
+
+  background:
+    #0a1520;
+
+  border:
+    1px solid
+    rgba(255,159,63,0.25);
+
+  color:
+    #fff;
+
+  border-radius:
+    10px;
+
+  padding:
+    9px 11px;
+}
+
+
+/* ============================================================
+   MODAL
+   ============================================================ */
+
+.modal {
+
+  position:
+    fixed;
+
+  inset:
+    0;
+
+  display:
+    none;
+
+  align-items:
+    center;
+
+  justify-content:
+    center;
+
+  padding:
+    24px;
+
+  background:
+    rgba(0,0,0,0.72);
+
+  backdrop-filter:
+    blur(8px);
+
+  z-index:
+    50;
+}
+
+
+.modal.show {
+
+  display:
+    flex;
+}
+
+
+.modal-box {
+
+  width:
+    min(1300px,100%);
+
+  max-height:
+    90vh;
+
+  overflow:
+    auto;
+
+  background:
+
+    linear-gradient(
+      180deg,
+      rgba(4,12,19,0.98),
+      rgba(2,7,11,0.99)
+    );
+
+  border:
+    1px solid
+    rgba(0,210,255,0.20);
+
+  border-top:
+    3px solid
+    var(--orange2);
+
+  border-radius:
+    20px;
+
+  box-shadow:
+    0 25px 60px
+    rgba(0,0,0,0.55);
+}
+
+
+.modal-header {
+
+  display:
+    flex;
+
+  justify-content:
+    space-between;
+
+  align-items:
+    flex-start;
+
+  gap:
+    14px;
+
+  padding:
+    18px 20px;
+
+  border-bottom:
+    1px solid
+    rgba(255,159,63,0.14);
+}
+
+
+.modal-header h3 {
+
+  margin:
+    0;
+
+  color:
+    var(--orange);
+
+  font-size:
+    23px;
+}
+
+
+.modal-header p {
+
+  margin:
+    5px 0 0;
+
+  color:
+    var(--muted);
+}
+
+
+.close-btn {
+
+  background:
+    transparent;
+
+  color:
+    white;
+
+  border:
+    1px solid
+    rgba(255,255,255,0.12);
+
+  width:
+    42px;
+
+  height:
+    42px;
+
+  border-radius:
+    10px;
+
+  cursor:
+    pointer;
+
+  font-size:
+    22px;
+}
+
+
+.modal-content {
+
+  padding:
+    18px;
+}
+
+
+/* ============================================================
+   DETAIL
+   ============================================================ */
+
+.detail-top-grid {
+
+  display:
+    grid;
+
+  grid-template-columns:
+    320px 1fr;
+
+  gap:
+    16px;
+
+  margin-bottom:
+    16px;
+}
+
+
+.detail-card {
+
+  background:
+
+    linear-gradient(
+      180deg,
+      rgba(8,18,27,0.95),
+      rgba(3,10,15,0.97)
+    );
+
+  border:
+    1px solid
+    rgba(0,210,255,0.18);
+
+  border-radius:
+    18px;
+
+  padding:
+    16px;
+
+  box-shadow:
+    var(--shadow);
+}
+
+
+.detail-card h4 {
+
+  margin:
+    0 0 12px;
+
+  color:
+    var(--orange);
+}
+
+
+.detail-metrics {
+
+  display:
+    grid;
+
+  grid-template-columns:
+    1fr 1fr;
+
+  gap:
+    10px;
+}
+
+
+.detail-metric {
+
+  background:
+    rgba(2,11,18,0.92);
+
+  border:
+    1px solid
+    rgba(0,210,255,0.14);
+
+  border-radius:
+    14px;
+
+  padding:
+    12px;
+}
+
+
+.detail-metric small {
+
+  display:
+    block;
+
+  color:
+    var(--muted);
+
+  margin-bottom:
+    8px;
+}
+
+
+.detail-metric strong {
+
+  color:
+    #ffd59c;
+}
+
+
+/* ============================================================
+   ALERT
+   ============================================================ */
+
+.alert-box {
+
+  display:
+    flex;
+
+  gap:
+    10px;
+
+  flex-wrap:
+    wrap;
+
+  margin-top:
+    14px;
+}
+
+
+.alert-pill {
+
+  padding:
+    8px 12px;
+
+  border-radius:
+    999px;
+
+  font-size:
+    12px;
+
+  font-weight:
+    700;
+}
+
+
+.alert-high-wind {
+
+  color:
+    var(--cyan);
+
+  border:
+    1px solid
+    rgba(0,210,255,0.28);
+}
+
+
+.alert-high-temp {
+
+  color:
+    var(--orange);
+
+  border:
+    1px solid
+    rgba(255,123,0,0.30);
+}
+
+
+.alert-normal {
+
+  color:
+    var(--green);
+
+  border:
+    1px solid
+    rgba(35,255,154,0.24);
+}
+
+
+/* ============================================================
+   HISTORY RANGE
+   ============================================================ */
+
+.range-toolbar {
+
+  display:
+    flex;
+
+  justify-content:
+    space-between;
+
+  align-items:
+    center;
+
+  gap:
+    10px;
+
+  flex-wrap:
+    wrap;
+
+  margin-bottom:
+    14px;
+}
+
+
+.range-buttons {
+
+  display:
+    flex;
+
+  gap:
+    8px;
+}
+
+
+.range-buttons button {
+
+  padding:
+    9px 14px;
+
+  border-radius:
+    10px;
+
+  border:
+    1px solid
+    rgba(255,159,63,0.22);
+
+  background:
+    #09151e;
+
+  color:
+    white;
+
+  cursor:
+    pointer;
+}
+
+
+.range-buttons button.active {
+
+  background:
+
+    linear-gradient(
+      180deg,
+      #d17812,
+      #9a5508
+    );
+
+  border-color:
+    rgba(255,159,63,0.45);
+}
+
+
+/* ============================================================
+   STATISTICS
+   ============================================================ */
+
+.history-stats {
+
+  display:
+    grid;
+
+  grid-template-columns:
+    repeat(
+      3,
+      minmax(180px,1fr)
+    );
+
+  gap:
+    12px;
+}
+
+
+.history-stat-card {
+
+  background:
+    rgba(4,12,18,0.96);
+
+  border:
+    1px solid
+    rgba(0,210,255,0.16);
+
+  border-radius:
+    16px;
+
+  padding:
+    14px;
+}
+
+
+.history-stat-card h5 {
+
+  margin:
+    0 0 10px;
+
+  color:
+    #d7eef8;
+}
+
+
+.history-stat-card .mini {
+
+  color:
+    var(--muted);
+
+  font-size:
+    12px;
+
+  line-height:
+    1.7;
+}
+
+
+/* ============================================================
+   CHARTS
+   ============================================================ */
+
+.charts-grid {
+
+  display:
+    grid;
+
+  gap:
+    16px;
+}
+
+
+.chart-card {
+
+  background:
+
+    linear-gradient(
+      180deg,
+      rgba(8,18,27,0.96),
+      rgba(3,10,16,0.98)
+    );
+
+  border:
+    1px solid
+    rgba(0,210,255,0.16);
+
+  border-radius:
+    18px;
+
+  padding:
+    14px;
+}
+
+
+.chart-card h4 {
+
+  margin:
+    0 0 12px;
+
+  color:
+    var(--orange);
+}
+
+
+.chart-wrap {
+
+  position:
+    relative;
+
+  height:
+    280px;
+}
+
+
+/* ============================================================
+   FORM
+   ============================================================ */
+
+.form-grid {
+
+  display:
+    grid;
+
+  grid-template-columns:
+    1fr 1fr;
+
+  gap:
+    12px;
+}
+
+
+.field {
+
+  display:
+    flex;
+
+  flex-direction:
+    column;
+
+  gap:
+    7px;
+
+  margin-bottom:
+    12px;
+}
+
+
+.field label {
+
+  font-size:
+    13px;
+
+  color:
+    #d8edf8;
+
+  font-weight:
+    700;
+}
+
+
+.field input {
+
+  width:
+    100%;
+
+  padding:
+    12px;
+
+  border-radius:
+    12px;
+
+  border:
+    1px solid
+    rgba(255,255,255,0.12);
+
+  background:
+    #08131d;
+
+  color:
+    white;
+}
+
+
+.modal-actions {
+
+  display:
+    flex;
+
+  justify-content:
+    flex-end;
+
+  gap:
+    10px;
+
+  flex-wrap:
+    wrap;
+}
+
+
+/* ============================================================
+   DELETED LIST
+   ============================================================ */
+
+.deleted-list {
+
+  display:
+    grid;
+
+  gap:
+    10px;
+}
+
+
+.deleted-item {
+
+  display:
+    flex;
+
+  justify-content:
+    space-between;
+
+  align-items:
+    center;
+
+  gap:
+    10px;
+
+  padding:
+    12px;
+
+  border-radius:
+    14px;
+
+  background:
+    #06111a;
+
+  border:
+    1px solid
+    rgba(255,255,255,0.08);
+}
+
+
+/* ============================================================
+   TOAST
+   ============================================================ */
+
+.toast-wrap {
+
+  position:
+    fixed;
+
+  right:
+    20px;
+
+  bottom:
+    20px;
+
+  display:
+    flex;
+
+  flex-direction:
+    column;
+
+  gap:
+    10px;
+
+  z-index:
+    80;
+}
+
+
+.toast {
+
+  min-width:
+    280px;
+
+  max-width:
+    420px;
+
+  background:
+    #07131c;
+
+  border-radius:
+    14px;
+
+  padding:
+    12px 14px;
+
+  border:
+    1px solid
+    rgba(255,255,255,0.10);
+}
+
+
+.toast.success {
+
+  border-color:
+    rgba(35,255,154,0.30);
+}
+
+
+.toast.error {
+
+  border-color:
+    rgba(255,84,112,0.30);
+}
+
+
+.toast.warn {
+
+  border-color:
+    rgba(255,213,74,0.30);
+}
+
+
+.empty-state {
+
+  padding:
+    30px;
+
+  text-align:
+    center;
+
+  color:
+    var(--muted);
+}
+
+
+/* ============================================================
+   MOBILE
+   ============================================================ */
+
+@media(
+  max-width: 1200px
+) {
+
+  .layout {
+
+    grid-template-columns:
+      1fr;
+  }
+
+  .detail-top-grid {
+
+    grid-template-columns:
+      1fr;
+  }
+}
+
+
+@media(
+  max-width: 800px
+) {
+
+  .brand-wrap {
+
+    flex-direction:
+      column;
+
+    align-items:
+      flex-start;
+  }
+
+
+  .summary {
+
+    grid-template-columns:
+      repeat(2,1fr);
+  }
+
+
+  .metrics,
+  .detail-metrics,
+  .history-stats,
+  .form-grid {
+
+    grid-template-columns:
+      1fr;
+  }
+
+
+  .station-actions {
+
+    grid-template-columns:
+      1fr;
+  }
+
+
+  .log-item {
+
+    grid-template-columns:
+      1fr;
+
+    gap:
+      5px;
+  }
+
+
+  .logo-box {
+
+    width:
+      58px;
+
+    height:
+      58px;
+  }
+
+
+  .brand-logo {
+
+    width:
+      44px;
+
+    height:
+      44px;
+  }
+
+
+  body::before {
+
+    background-size:
+      360px auto;
+  }
+}
+
 </style>
+
 </head>
+
+
 <body>
-<header><h1>Weather Station Network</h1><p>N-station dashboard + live MQTT/server logs</p></header>
-<main>
-<section class="summary"><div class="summary-card">Total Stations<strong id="total">0</strong></div><div class="summary-card">Online<strong id="online">0</strong></div><div class="summary-card">Offline<strong id="offline">0</strong></div><div class="summary-card">Live Stream<strong id="streamState">--</strong></div></section>
-<div class="layout">
-<section class="panel"><div class="panel-header"><h2>Stations</h2><div><span id="liveDot" class="live-dot"></span><span id="liveText">Connecting...</span></div></div><div id="stations" class="stations"><div class="empty">Waiting for station data...</div></div></section>
-<section class="panel"><div class="panel-header"><h2>Live Logs</h2><div class="log-toolbar"><select id="levelFilter"><option value="ALL">All</option><option value="RX">MQTT RX</option><option value="INFO">Info</option><option value="SUCCESS">Success</option><option value="WARN">Warning</option><option value="ERROR">Error</option><option value="OTA">OTA</option></select><button id="autoBtn" type="button">Auto-scroll: ON</button><button id="clearBtn" type="button">Clear View</button></div></div><div id="logs"></div></section>
+
+<div class="app">
+
+
+<!-- ============================================================
+     HEADER
+     ============================================================ -->
+
+<header class="topbar">
+
+<div class="brand-wrap">
+
+
+<div class="brand-left">
+
+
+<div class="logo-box">
+
+<img
+  src="/bg-logo.png"
+  alt="Weather Stations"
+  class="brand-logo"
+>
+
 </div>
-</main>
+
+
+<div class="title-wrap">
+
+<h1>
+Weather Stations
+</h1>
+
+<p>
+Live monitoring
+</p>
+
+</div>
+
+
+</div>
+
+
+<div>
+
+<button
+  class="btn btn-ghost"
+  onclick="openDeletedModal()"
+>
+
+Deleted Stations
+
+</button>
+
+</div>
+
+
+</div>
+
+</header>
+
+
+<!-- ============================================================
+     SUMMARY
+     ============================================================ -->
+
+<section class="summary">
+
+
+<div class="summary-card">
+
+<div class="label">
+Total Stations
+</div>
+
+<div
+  class="value"
+  id="totalStations"
+>
+0
+</div>
+
+</div>
+
+
+<div class="summary-card">
+
+<div class="label">
+Online
+</div>
+
+<div
+  class="value"
+  id="onlineStations"
+>
+0
+</div>
+
+</div>
+
+
+<div class="summary-card">
+
+<div class="label">
+Offline
+</div>
+
+<div
+  class="value"
+  id="offlineStations"
+>
+0
+</div>
+
+</div>
+
+
+<div class="summary-card">
+
+<div class="label">
+Live Stream
+</div>
+
+<div
+  class="value"
+  id="liveStatus"
+>
+CONNECTING
+</div>
+
+</div>
+
+
+</section>
+
+
+<!-- ============================================================
+     MAIN
+     ============================================================ -->
+
+<section class="layout">
+
+
+<!-- ============================================================
+     STATIONS PANEL
+     ============================================================ -->
+
+<div class="panel">
+
+
+<div class="panel-header">
+
+<h2>
+Stations
+</h2>
+
+
+<div class="connection-indicator">
+
+<span
+  class="connection-dot"
+  id="sseDot"
+></span>
+
+<span id="sseText">
+Connecting...
+</span>
+
+</div>
+
+</div>
+
+
+<div
+  id="stationsGrid"
+  class="stations-grid"
+>
+
+<div class="empty-state">
+Loading stations...
+</div>
+
+</div>
+
+
+</div>
+
+
+<!-- ============================================================
+     LOGS
+     ============================================================ -->
+
+<div class="panel">
+
+
+<div class="panel-header">
+
+
+<h2>
+Live Logs
+</h2>
+
+
+<div class="header-actions">
+
+
+<select id="logFilter">
+
+<option value="ALL">
+All
+</option>
+
+<option value="SUCCESS">
+SUCCESS
+</option>
+
+<option value="ONLINE">
+ONLINE
+</option>
+
+<option value="OFFLINE">
+OFFLINE
+</option>
+
+<option value="TEMP">
+TEMP
+</option>
+
+<option value="WIND">
+WIND
+</option>
+
+<option value="RAIN">
+RAIN
+</option>
+
+<option value="WARN">
+WARN
+</option>
+
+<option value="ERROR">
+ERROR
+</option>
+
+<option value="OTA">
+OTA
+</option>
+
+<option value="INFO">
+INFO
+</option>
+
+</select>
+
+
+<button
+  class="btn btn-orange"
+  id="autoScrollBtn"
+>
+
+Auto-scroll: ON
+
+</button>
+
+
+<button
+  class="btn btn-orange"
+  onclick="clearLogs()"
+>
+
+Clear View
+
+</button>
+
+
+</div>
+
+</div>
+
+
+<div
+  id="logsBox"
+  class="logs-box"
+>
+</div>
+
+
+</div>
+
+
+</section>
+
+</div>
+
+
+<!-- ============================================================
+     STATION DETAILS MODAL
+     ============================================================ -->
+
+<div
+  class="modal"
+  id="stationModal"
+>
+
+<div class="modal-box">
+
+
+<div class="modal-header">
+
+<div>
+
+<h3 id="detailTitle">
+Station Details
+</h3>
+
+<p id="detailSubtitle">
+Weather Station
+</p>
+
+</div>
+
+
+<button
+  class="close-btn"
+  onclick="closeModal('stationModal')"
+>
+
+×
+
+</button>
+
+</div>
+
+
+<div class="modal-content">
+
+
+<div class="detail-top-grid">
+
+
+<div class="detail-card">
+
+
+<h4>
+Current Status
+</h4>
+
+
+<div class="detail-metrics">
+
+
+<div class="detail-metric">
+
+<small>
+Temperature
+</small>
+
+<strong id="detailTemp">
+-- °C
+</strong>
+
+</div>
+
+
+<div class="detail-metric">
+
+<small>
+Pressure
+</small>
+
+<strong id="detailPressure">
+-- hPa
+</strong>
+
+</div>
+
+
+<div class="detail-metric">
+
+<small>
+Wind
+</small>
+
+<strong id="detailWind">
+-- m/s
+</strong>
+
+</div>
+
+
+<div class="detail-metric">
+
+<small>
+Rain
+</small>
+
+<strong id="detailRain">
+--
+</strong>
+
+</div>
+
+
+</div>
+
+
+<div
+  class="station-meta"
+  id="detailMeta"
+>
+</div>
+
+
+<div
+  class="alert-box"
+  id="detailAlerts"
+>
+</div>
+
+
+</div>
+
+
+<div class="detail-card">
+
+
+<div class="range-toolbar">
+
+
+<div>
+
+<h4>
+Station History
+</h4>
+
+<div
+  style="
+  color:#8fb3c7;
+  font-size:12px;"
+>
+
+Select graph range
+
+</div>
+
+</div>
+
+
+<div class="range-buttons">
+
+
+<button
+  id="range1h"
+  class="active"
+  onclick="setHistoryRange('1h')"
+>
+
+1H
+
+</button>
+
+
+<button
+  id="range6h"
+  onclick="setHistoryRange('6h')"
+>
+
+6H
+
+</button>
+
+
+<button
+  id="range24h"
+  onclick="setHistoryRange('24h')"
+>
+
+24H
+
+</button>
+
+
+</div>
+
+
+</div>
+
+
+<div class="history-stats">
+
+
+<div class="history-stat-card">
+
+<h5>
+Temperature
+</h5>
+
+<div
+  class="mini"
+  id="tempStats"
+>
+
+No data yet
+
+</div>
+
+</div>
+
+
+<div class="history-stat-card">
+
+<h5>
+Wind
+</h5>
+
+<div
+  class="mini"
+  id="windStats"
+>
+
+No data yet
+
+</div>
+
+</div>
+
+
+<div class="history-stat-card">
+
+<h5>
+Rain Sensor
+</h5>
+
+<div
+  class="mini"
+  id="rainStats"
+>
+
+No data yet
+
+</div>
+
+</div>
+
+
+</div>
+
+
+</div>
+
+
+</div>
+
+
+<div class="charts-grid">
+
+
+<div class="chart-card">
+
+<h4>
+Temperature History
+</h4>
+
+<div class="chart-wrap">
+
+<canvas id="tempChart">
+</canvas>
+
+</div>
+
+</div>
+
+
+<div class="chart-card">
+
+<h4>
+Wind Speed History
+</h4>
+
+<div class="chart-wrap">
+
+<canvas id="windChart">
+</canvas>
+
+</div>
+
+</div>
+
+
+<div class="chart-card">
+
+<h4>
+Rain Sensor Level
+</h4>
+
+<div class="chart-wrap">
+
+<canvas id="rainChart">
+</canvas>
+
+</div>
+
+</div>
+
+
+</div>
+
+
+</div>
+
+
+</div>
+
+</div>
+
+
+<!-- ============================================================
+     CONFIG MODAL
+     ============================================================ -->
+
+<div
+  class="modal"
+  id="configModal"
+>
+
+<div
+  class="modal-box"
+  style="max-width:760px;"
+>
+
+
+<div class="modal-header">
+
+<div>
+
+<h3>
+Configure Station
+</h3>
+
+<p id="configModalSub">
+</p>
+
+</div>
+
+
+<button
+  class="close-btn"
+  onclick="closeModal('configModal')"
+>
+
+×
+
+</button>
+
+
+</div>
+
+
+<div class="modal-content">
+
+
+<form id="configForm">
+
+
+<input
+  type="hidden"
+  id="configStationId"
+>
+
+
+<div class="form-grid">
+
+
+<div class="field">
+
+<label>
+Station Name
+</label>
+
+<input
+  type="text"
+  id="cfgStationName"
+>
+
+</div>
+
+
+<div class="field">
+
+<label>
+Location
+</label>
+
+<input
+  type="text"
+  id="cfgLocation"
+>
+
+</div>
+
+
+</div>
+
+
+<div class="form-grid">
+
+
+<div class="field">
+
+<label>
+WiFi SSID
+</label>
+
+<input
+  type="text"
+  id="cfgWifiSSID"
+>
+
+</div>
+
+
+<div class="field">
+
+<label>
+WiFi Password
+</label>
+
+<input
+  type="password"
+  id="cfgWifiPassword"
+>
+
+</div>
+
+
+</div>
+
+
+<div class="field">
+
+<label>
+Admin Password
+</label>
+
+<input
+  type="password"
+  id="cfgAdminPassword"
+>
+
+</div>
+
+
+<div class="modal-actions">
+
+
+<button
+  type="button"
+  class="btn btn-ghost"
+  onclick="closeModal('configModal')"
+>
+
+Cancel
+
+</button>
+
+
+<button
+  type="submit"
+  class="btn btn-primary"
+>
+
+Send Configuration
+
+</button>
+
+
+</div>
+
+
+</form>
+
+
+</div>
+
+
+</div>
+
+</div>
+
+
+<!-- ============================================================
+     OTA MODAL
+     ============================================================ -->
+
+<div
+  class="modal"
+  id="otaModal"
+>
+
+<div
+  class="modal-box"
+  style="max-width:760px;"
+>
+
+
+<div class="modal-header">
+
+<div>
+
+<h3>
+OTA Update
+</h3>
+
+<p id="otaModalSub">
+</p>
+
+</div>
+
+
+<button
+  class="close-btn"
+  onclick="closeModal('otaModal')"
+>
+
+×
+
+</button>
+
+</div>
+
+
+<div class="modal-content">
+
+
+<form id="otaForm">
+
+
+<input
+  type="hidden"
+  id="otaStationId"
+>
+
+
+<div class="field">
+
+<label>
+Firmware Version
+</label>
+
+<input
+  type="text"
+  id="otaVersion"
+>
+
+</div>
+
+
+<div class="field">
+
+<label>
+Firmware HTTPS URL
+</label>
+
+<input
+  type="text"
+  id="otaURL"
+>
+
+</div>
+
+
+<div class="field">
+
+<label>
+Admin Password
+</label>
+
+<input
+  type="password"
+  id="otaAdminPassword"
+>
+
+</div>
+
+
+<div class="modal-actions">
+
+
+<button
+  type="button"
+  class="btn btn-ghost"
+  onclick="closeModal('otaModal')"
+>
+
+Cancel
+
+</button>
+
+
+<button
+  type="submit"
+  class="btn btn-orange"
+>
+
+Send OTA Update
+
+</button>
+
+
+</div>
+
+
+</form>
+
+
+</div>
+
+
+</div>
+
+</div>
+
+
+<!-- ============================================================
+     DELETED STATIONS
+     ============================================================ -->
+
+<div
+  class="modal"
+  id="deletedModal"
+>
+
+<div
+  class="modal-box"
+  style="max-width:760px;"
+>
+
+
+<div class="modal-header">
+
+<div>
+
+<h3>
+Deleted Stations
+</h3>
+
+<p>
+Restore removed stations
+</p>
+
+</div>
+
+
+<button
+  class="close-btn"
+  onclick="closeModal('deletedModal')"
+>
+
+×
+
+</button>
+
+</div>
+
+
+<div class="modal-content">
+
+
+<div class="field">
+
+<label>
+Admin Password
+</label>
+
+<input
+  type="password"
+  id="restoreAdminPassword"
+>
+
+</div>
+
+
+<div
+  id="deletedList"
+  class="deleted-list"
+>
+</div>
+
+
+</div>
+
+
+</div>
+
+</div>
+
+
+<!-- ============================================================
+     TOAST
+     ============================================================ -->
+
+<div
+  class="toast-wrap"
+  id="toastWrap"
+>
+</div>
+
+
 <script>
-const stationState=new Map(),logState=[];let autoScroll=true,selectedLevel="ALL";const stationRoot=document.getElementById("stations"),logsRoot=document.getElementById("logs");const fmt=(v,d=1)=>Number.isFinite(Number(v))?Number(v).toFixed(d):"--";const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-function renderStations(){const list=[...stationState.values()].sort((a,b)=>String(a.station_id).localeCompare(String(b.station_id)));total.textContent=list.length;online.textContent=list.filter(s=>s.online).length;offline.textContent=list.filter(s=>!s.online).length;if(!list.length){stationRoot.innerHTML='<div class="empty">Waiting for station data...</div>';return}stationRoot.innerHTML=list.map(s=>`<article class="card ${s.online?"":"offline"}"><div class="top"><div><div class="station-id">${esc(s.station_id)}</div><div>${esc(s.station_name||s.station_id)}</div><div class="location">${esc(s.location||"")}</div></div><span class="badge ${s.online?"on":"off"}">${s.online?"ONLINE":"OFFLINE"}</span></div><div class="metrics"><div class="metric"><small>Temperature</small><strong>${fmt(s.temperature,1)} °C</strong></div><div class="metric"><small>Pressure</small><strong>${fmt(s.pressure,1)} hPa</strong></div><div class="metric"><small>Wind</small><strong>${fmt(s.wind_speed,2)} m/s</strong></div><div class="metric"><small>Rain</small><strong>${esc(s.rain||"--")}</strong></div></div><div class="meta">Firmware: ${esc(s.firmware||"--")}<br>IP: ${esc(s.ip||"--")}<br>Last seen: ${esc(s.last_seen?new Date(s.last_seen).toLocaleString():"--")}</div></article>`).join("")}
-function renderLogs(){const filtered=selectedLevel==="ALL"?logState:logState.filter(l=>l.level===selectedLevel);logsRoot.innerHTML=filtered.map(l=>`<div class="log-line"><span class="log-time">${esc(new Date(l.time).toLocaleTimeString())}</span> <span class="level-${esc(l.level)}">[${esc(l.level)}]</span> <span class="log-source">[${esc(l.source)}]</span> ${esc(l.message)}</div>`).join("");if(autoScroll)logsRoot.scrollTop=logsRoot.scrollHeight}
-function addLog(log){logState.push(log);while(logState.length>500)logState.shift();renderLogs()}
-Promise.all([fetch('/api/stations').then(r=>r.json()),fetch('/api/logs?limit=150').then(r=>r.json())]).then(([ss,ll])=>{ss.forEach(s=>stationState.set(s.station_id,s));ll.forEach(l=>logState.push(l));renderStations();renderLogs()}).catch(e=>addLog({time:new Date().toISOString(),level:'ERROR',source:'BROWSER',message:e.message}));
-levelFilter.addEventListener('change',e=>{selectedLevel=e.target.value;renderLogs()});autoBtn.addEventListener('click',()=>{autoScroll=!autoScroll;autoBtn.textContent=`Auto-scroll: ${autoScroll?'ON':'OFF'}`;if(autoScroll)logsRoot.scrollTop=logsRoot.scrollHeight});clearBtn.addEventListener('click',()=>{logState.length=0;renderLogs()});
-const events=new EventSource('/events');events.addEventListener('connected',()=>{liveDot.classList.add('connected');liveText.textContent='Live connected';streamState.textContent='LIVE'});events.addEventListener('station',e=>{const s=JSON.parse(e.data);stationState.set(s.station_id,s);renderStations()});events.addEventListener('log',e=>addLog(JSON.parse(e.data)));events.onerror=()=>{liveDot.classList.remove('connected');liveText.textContent='Reconnecting...';streamState.textContent='--'};
+
+/* ============================================================
+   STATE
+   ============================================================ */
+
+const state = {
+
+  stations:
+    new Map(),
+
+  logs:
+    [],
+
+  deletedStations:
+    [],
+
+  autoScroll:
+    true,
+
+  currentDetailStation:
+    null,
+
+  currentHistoryRange:
+    "1h",
+
+  charts: {
+
+    temp:
+      null,
+
+    wind:
+      null,
+
+    rain:
+      null
+  },
+
+  historyRefreshTimer:
+    null
+};
+
+
+/* ============================================================
+   HELPERS
+   ============================================================ */
+
+function escapeHTML(
+  value
+) {
+
+  return String(
+    value ??
+    ""
+  )
+
+  .replaceAll(
+    "&",
+    "&amp;"
+  )
+
+  .replaceAll(
+    "<",
+    "&lt;"
+  )
+
+  .replaceAll(
+    ">",
+    "&gt;"
+  )
+
+  .replaceAll(
+    "\"",
+    "&quot;"
+  )
+
+  .replaceAll(
+    "'",
+    "&#039;"
+  );
+}
+
+
+function formatNumber(
+  value,
+  decimals = 1
+) {
+
+  if (
+    value === null ||
+    value === undefined ||
+    Number.isNaN(
+      Number(
+        value
+      )
+    )
+  ) {
+
+    return "--";
+  }
+
+  return Number(
+    value
+  ).toFixed(
+    decimals
+  );
+}
+
+
+function formatTemperature(
+  value
+) {
+
+  if (
+    value === null ||
+    value === undefined
+  ) {
+
+    return "-- °C";
+  }
+
+  return (
+    Number(
+      value
+    ).toFixed(
+      1
+    ) +
+    " °C"
+  );
+}
+
+
+function formatPressure(
+  value
+) {
+
+  if (
+    value === null ||
+    value === undefined
+  ) {
+
+    return "-- hPa";
+  }
+
+  return (
+    Number(
+      value
+    ).toFixed(
+      1
+    ) +
+    " hPa"
+  );
+}
+
+
+function formatWind(
+  value
+) {
+
+  if (
+    value === null ||
+    value === undefined
+  ) {
+
+    return "-- m/s";
+  }
+
+  return (
+    Number(
+      value
+    ).toFixed(
+      2
+    ) +
+    " m/s"
+  );
+}
+
+
+function formatDateTime(
+  value
+) {
+
+  if (
+    !value
+  ) {
+
+    return "--";
+  }
+
+  const date =
+    new Date(
+      value
+    );
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+
+    return "--";
+  }
+
+  return date.toLocaleString();
+}
+
+
+function formatLogTime(
+  value
+) {
+
+  const date =
+    new Date(
+      value
+    );
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+
+    return "--";
+  }
+
+  return date.toLocaleTimeString();
+}
+
+
+/* ============================================================
+   TOAST
+   ============================================================ */
+
+function showToast(
+  message,
+  type =
+  "success"
+) {
+
+  const wrap =
+    document.getElementById(
+      "toastWrap"
+    );
+
+
+  const toast =
+    document.createElement(
+      "div"
+    );
+
+
+  toast.className =
+    `toast ${type}`;
+
+
+  toast.textContent =
+    message;
+
+
+  wrap.appendChild(
+    toast
+  );
+
+
+  setTimeout(
+    () => {
+
+      toast.remove();
+
+    },
+    3200
+  );
+}
+
+
+/* ============================================================
+   LIVE STATUS
+   ============================================================ */
+
+function setLiveStatus(
+  connected
+) {
+
+  document.getElementById(
+    "liveStatus"
+  ).textContent =
+    connected
+      ?
+      "LIVE"
+      :
+      "OFFLINE";
+
+
+  const dot =
+    document.getElementById(
+      "sseDot"
+    );
+
+
+  const text =
+    document.getElementById(
+      "sseText"
+    );
+
+
+  if (
+    connected
+  ) {
+
+    dot.classList.remove(
+      "off"
+    );
+
+    text.textContent =
+      "Live connected";
+  }
+
+  else {
+
+    dot.classList.add(
+      "off"
+    );
+
+    text.textContent =
+      "Reconnecting...";
+  }
+}
+
+
+/* ============================================================
+   SUMMARY
+   ============================================================ */
+
+function renderSummary() {
+
+  const list =
+    [
+      ...state.stations.values()
+    ];
+
+
+  const online =
+    list.filter(
+      station =>
+        station.online
+    ).length;
+
+
+  document.getElementById(
+    "totalStations"
+  ).textContent =
+    list.length;
+
+
+  document.getElementById(
+    "onlineStations"
+  ).textContent =
+    online;
+
+
+  document.getElementById(
+    "offlineStations"
+  ).textContent =
+    list.length -
+    online;
+}
+
+
+/* ============================================================
+   STATIONS
+   ============================================================ */
+
+function renderStations() {
+
+  const container =
+    document.getElementById(
+      "stationsGrid"
+    );
+
+
+  const stations =
+    [
+      ...state.stations.values()
+    ]
+
+    .sort(
+      (
+        a,
+        b
+      ) =>
+        String(
+          a.station_id
+        ).localeCompare(
+          String(
+            b.station_id
+          )
+        )
+    );
+
+
+  if (
+    stations.length ===
+    0
+  ) {
+
+    container.innerHTML =
+      `
+      <div class="empty-state">
+      No stations available
+      </div>
+      `;
+
+
+    renderSummary();
+
+    return;
+  }
+
+
+  container.innerHTML =
+    stations.map(
+      station => {
+
+        const encodedID =
+          encodeURIComponent(
+            station.station_id
+          );
+
+
+        const statusClass =
+          station.online
+            ?
+            "online"
+            :
+            "offline";
+
+
+        const statusText =
+          station.online
+            ?
+            "ONLINE"
+            :
+            "OFFLINE";
+
+
+        return `
+        <div
+          class="station-card"
+          onclick="openStationDetail(
+            decodeURIComponent(
+              '${encodedID}'
+            )
+          )"
+        >
+
+
+        <div class="station-top">
+
+
+        <div>
+
+        <h3 class="station-name">
+
+        ${escapeHTML(
+          station.station_id
+        )}
+
+        </h3>
+
+
+        <div class="station-sub">
+
+        ${escapeHTML(
+          station.station_name ||
+          "--"
+        )}
+
+        <br>
+
+        ${escapeHTML(
+          station.location ||
+          ""
+        )}
+
+        </div>
+
+        </div>
+
+
+        <div
+          class="station-status ${statusClass}"
+        >
+
+        ${statusText}
+
+        </div>
+
+
+        </div>
+
+
+        <div class="metrics">
+
+
+        <div class="metric">
+
+        <small>
+        Temperature
+        </small>
+
+        <strong>
+
+        ${formatTemperature(
+          station.temperature
+        )}
+
+        </strong>
+
+        </div>
+
+
+        <div class="metric">
+
+        <small>
+        Pressure
+        </small>
+
+        <strong>
+
+        ${formatPressure(
+          station.pressure
+        )}
+
+        </strong>
+
+        </div>
+
+
+        <div class="metric">
+
+        <small>
+        Wind
+        </small>
+
+        <strong>
+
+        ${formatWind(
+          station.wind_speed
+        )}
+
+        </strong>
+
+        </div>
+
+
+        <div class="metric">
+
+        <small>
+        Rain
+        </small>
+
+        <strong>
+
+        ${escapeHTML(
+          station.rain ||
+          "--"
+        )}
+
+        </strong>
+
+        </div>
+
+
+        </div>
+
+
+        <div class="station-meta">
+
+        Firmware:
+        ${escapeHTML(
+          station.firmware ||
+          "--"
+        )}
+
+        <br>
+
+        Network:
+        ${escapeHTML(
+          station.network ||
+          "--"
+        )}
+
+        <br>
+
+        IP:
+        ${escapeHTML(
+          station.ip ||
+          "--"
+        )}
+
+        <br>
+
+        Last seen:
+        ${escapeHTML(
+          formatDateTime(
+            station.last_seen
+          )
+        )}
+
+        </div>
+
+
+        <div
+          class="station-actions"
+          onclick="event.stopPropagation()"
+        >
+
+
+        <button
+          class="btn btn-primary"
+          onclick="openConfigModal(
+            decodeURIComponent(
+              '${encodedID}'
+            )
+          )"
+        >
+
+        CONFIGURE
+
+        </button>
+
+
+        <button
+          class="btn btn-orange"
+          onclick="openOTAModal(
+            decodeURIComponent(
+              '${encodedID}'
+            )
+          )"
+        >
+
+        OTA UPDATE
+
+        </button>
+
+
+        <button
+          class="btn btn-yellow"
+          onclick="rebootStation(
+            decodeURIComponent(
+              '${encodedID}'
+            )
+          )"
+        >
+
+        REBOOT
+
+        </button>
+
+
+        <button
+          class="btn btn-red"
+          onclick="deleteStation(
+            decodeURIComponent(
+              '${encodedID}'
+            )
+          )"
+        >
+
+        DELETE
+
+        </button>
+
+
+        </div>
+
+
+        </div>
+        `;
+
+      }
+    )
+    .join("");
+
+
+  renderSummary();
+}
+
+
+/* ============================================================
+   LOGS
+   ============================================================ */
+
+function getLogBadgeClass(
+  level
+) {
+
+  const key =
+    String(
+      level ||
+      "INFO"
+    ).toUpperCase();
+
+
+  switch (
+    key
+  ) {
+
+    case "SUCCESS":
+      return "badge-success";
+
+    case "ONLINE":
+      return "badge-online";
+
+    case "OFFLINE":
+      return "badge-offline";
+
+    case "TEMP":
+      return "badge-temp";
+
+    case "WIND":
+      return "badge-wind";
+
+    case "RAIN":
+      return "badge-rain";
+
+    case "WARN":
+      return "badge-warn";
+
+    case "ERROR":
+      return "badge-error";
+
+    case "OTA":
+      return "badge-ota";
+
+    default:
+      return "badge-info";
+  }
+}
+
+
+function renderLogs() {
+
+  const box =
+    document.getElementById(
+      "logsBox"
+    );
+
+
+  const filter =
+    document.getElementById(
+      "logFilter"
+    ).value;
+
+
+  const filtered =
+    state.logs.filter(
+      log => {
+
+        if (
+          filter ===
+          "ALL"
+        ) {
+
+          return true;
+        }
+
+        return (
+          String(
+            log.level ||
+            ""
+          ).toUpperCase() ===
+          filter
+        );
+      }
+    );
+
+
+  if (
+    filtered.length ===
+    0
+  ) {
+
+    box.innerHTML =
+      `
+      <div class="empty-state">
+      No logs
+      </div>
+      `;
+
+    return;
+  }
+
+
+  box.innerHTML =
+    filtered.map(
+      log => {
+
+        return `
+        <div class="log-item">
+
+        <div class="log-time">
+        ${escapeHTML(
+          formatLogTime(
+            log.time
+          )
+        )}
+        </div>
+
+        <div
+          class="log-badge ${getLogBadgeClass(
+            log.level
+          )}"
+        >
+        ${escapeHTML(
+          log.level ||
+          "INFO"
+        )}
+        </div>
+
+        <div class="log-source">
+        [${escapeHTML(
+          log.source ||
+          "SERVER"
+        )}]
+        </div>
+
+        <div class="log-message">
+        ${escapeHTML(
+          log.message ||
+          ""
+        )}
+        </div>
+
+        </div>
+        `;
+
+      }
+    )
+    .join("");
+
+
+  if (
+    state.autoScroll
+  ) {
+
+    box.scrollTop =
+      box.scrollHeight;
+  }
+}
+
+
+function clearLogs() {
+
+  state.logs =
+    [];
+
+  renderLogs();
+}
+
+
+/* ============================================================
+   API
+   ============================================================ */
+
+async function fetchJSON(
+  url,
+  options =
+  {}
+) {
+
+  const response =
+    await fetch(
+      url,
+      options
+    );
+
+
+  const data =
+    await response
+      .json()
+      .catch(
+        () => ({})
+      );
+
+
+  if (
+    !response.ok
+  ) {
+
+    throw new Error(
+      data.error ||
+      data.message ||
+      "Request failed"
+    );
+  }
+
+
+  return data;
+}
+
+
+/* ============================================================
+   INITIAL LOAD
+   ============================================================ */
+
+async function loadInitialData() {
+
+  try {
+
+    const [
+      stations,
+      logs,
+      deleted
+    ] =
+      await Promise.all([
+
+        fetchJSON(
+          "/api/stations"
+        ),
+
+        fetchJSON(
+          "/api/logs?limit=150"
+        ),
+
+        fetchJSON(
+          "/api/deleted-stations"
+        )
+
+      ]);
+
+
+    state.stations =
+      new Map(
+        stations.map(
+          item => [
+            item.station_id,
+            item
+          ]
+        )
+      );
+
+
+    state.logs =
+      Array.isArray(
+        logs
+      )
+        ?
+        logs
+        :
+        [];
+
+
+    state.deletedStations =
+      Array.isArray(
+        deleted
+      )
+        ?
+        deleted
+        :
+        [];
+
+
+    renderStations();
+
+    renderLogs();
+
+    renderDeletedStations();
+
+  }
+
+  catch (
+    error
+  ) {
+
+    showToast(
+      error.message,
+      "error"
+    );
+  }
+}
+
+
+/* ============================================================
+   SSE
+   ============================================================ */
+
+function connectEvents() {
+
+  setLiveStatus(
+    false
+  );
+
+
+  const events =
+    new EventSource(
+      "/events"
+    );
+
+
+  events.addEventListener(
+    "connected",
+    () => {
+
+      setLiveStatus(
+        true
+      );
+    }
+  );
+
+
+  events.addEventListener(
+    "log",
+    event => {
+
+      const data =
+        JSON.parse(
+          event.data
+        );
+
+
+      state.logs.push(
+        data
+      );
+
+
+      if (
+        state.logs.length >
+        300
+      ) {
+
+        state.logs.shift();
+      }
+
+
+      renderLogs();
+    }
+  );
+
+
+  events.addEventListener(
+    "station",
+    event => {
+
+      const station =
+        JSON.parse(
+          event.data
+        );
+
+
+      state.stations.set(
+        station.station_id,
+        station
+      );
+
+
+      renderStations();
+
+
+      if (
+        state.currentDetailStation ===
+        station.station_id
+      ) {
+
+        updateDetailHeader(
+          station
+        );
+
+        scheduleHistoryRefresh(
+          station.station_id
+        );
+      }
+    }
+  );
+
+
+  events.addEventListener(
+    "station_deleted",
+    event => {
+
+      const data =
+        JSON.parse(
+          event.data
+        );
+
+
+      state.stations.delete(
+        data.station_id
+      );
+
+
+      renderStations();
+    }
+  );
+
+
+  events.addEventListener(
+    "deleted_stations",
+    event => {
+
+      state.deletedStations =
+        JSON.parse(
+          event.data
+        );
+
+
+      renderDeletedStations();
+    }
+  );
+
+
+  events.addEventListener(
+    "history_point",
+    event => {
+
+      const data =
+        JSON.parse(
+          event.data
+        );
+
+
+      if (
+        state.currentDetailStation ===
+        data.station_id
+      ) {
+
+        scheduleHistoryRefresh(
+          data.station_id
+        );
+      }
+    }
+  );
+
+
+  events.onerror =
+    () => {
+
+      setLiveStatus(
+        false
+      );
+    };
+}
+
+
+/* ============================================================
+   MODAL
+   ============================================================ */
+
+function openModal(
+  id
+) {
+
+  document.getElementById(
+    id
+  ).classList.add(
+    "show"
+  );
+}
+
+
+function closeModal(
+  id
+) {
+
+  document.getElementById(
+    id
+  ).classList.remove(
+    "show"
+  );
+}
+
+
+/* ============================================================
+   DETAIL
+   ============================================================ */
+
+function updateDetailHeader(
+  station
+) {
+
+  document.getElementById(
+    "detailTitle"
+  ).textContent =
+    station.station_id;
+
+
+  document.getElementById(
+    "detailSubtitle"
+  ).textContent =
+    (
+      station.station_name ||
+      "--"
+    ) +
+    " • " +
+    (
+      station.location ||
+      "--"
+    );
+
+
+  document.getElementById(
+    "detailTemp"
+  ).textContent =
+    formatTemperature(
+      station.temperature
+    );
+
+
+  document.getElementById(
+    "detailPressure"
+  ).textContent =
+    formatPressure(
+      station.pressure
+    );
+
+
+  document.getElementById(
+    "detailWind"
+  ).textContent =
+    formatWind(
+      station.wind_speed
+    );
+
+
+  document.getElementById(
+    "detailRain"
+  ).textContent =
+    station.rain ||
+    "--";
+
+
+  document.getElementById(
+    "detailMeta"
+  ).innerHTML =
+    `
+    Firmware:
+    ${escapeHTML(
+      station.firmware ||
+      "--"
+    )}
+    <br>
+
+    Network:
+    ${escapeHTML(
+      station.network ||
+      "--"
+    )}
+    <br>
+
+    IP:
+    ${escapeHTML(
+      station.ip ||
+      "--"
+    )}
+    <br>
+
+    MAC:
+    ${escapeHTML(
+      station.mac ||
+      "--"
+    )}
+    <br>
+
+    RSSI:
+    ${escapeHTML(
+      station.wifi_rssi ??
+      "--"
+    )}
+    <br>
+
+    Last seen:
+    ${escapeHTML(
+      formatDateTime(
+        station.last_seen
+      )
+    )}
+    `;
+
+
+  renderDetailAlerts(
+    station
+  );
+}
+
+
+/* ============================================================
+   ALERTS
+   ============================================================ */
+
+function renderDetailAlerts(
+  station
+) {
+
+  const box =
+    document.getElementById(
+      "detailAlerts"
+    );
+
+
+  const alerts =
+    [];
+
+
+  const wind =
+    Number(
+      station.wind_speed
+    );
+
+
+  const temp =
+    Number(
+      station.temperature
+    );
+
+
+  if (
+    !Number.isNaN(
+      wind
+    ) &&
+    wind >=
+      8
+  ) {
+
+    alerts.push(
+      `
+      <div class="alert-pill alert-high-wind">
+      ⚠ High Wind:
+      ${wind.toFixed(2)}
+      m/s
+      </div>
+      `
+    );
+  }
+
+
+  if (
+    !Number.isNaN(
+      temp
+    ) &&
+    temp >=
+      35
+  ) {
+
+    alerts.push(
+      `
+      <div class="alert-pill alert-high-temp">
+      ⚠ High Temperature:
+      ${temp.toFixed(1)}
+      °C
+      </div>
+      `
+    );
+  }
+
+
+  if (
+    alerts.length ===
+    0
+  ) {
+
+    alerts.push(
+      `
+      <div class="alert-pill alert-normal">
+      System normal
+      </div>
+      `
+    );
+  }
+
+
+  box.innerHTML =
+    alerts.join("");
+}
+
+
+/* ============================================================
+   OPEN DETAIL
+   ============================================================ */
+
+async function openStationDetail(
+  stationID
+) {
+
+  const station =
+    state.stations.get(
+      stationID
+    );
+
+
+  if (
+    !station
+  ) {
+
+    return;
+  }
+
+
+  state.currentDetailStation =
+    stationID;
+
+
+  state.currentHistoryRange =
+    "1h";
+
+
+  document.getElementById(
+    "range1h"
+  ).classList.add(
+    "active"
+  );
+
+
+  document.getElementById(
+    "range6h"
+  ).classList.remove(
+    "active"
+  );
+
+
+  document.getElementById(
+    "range24h"
+  ).classList.remove(
+    "active"
+  );
+
+
+  updateDetailHeader(
+    station
+  );
+
+
+  openModal(
+    "stationModal"
+  );
+
+
+  await loadStationHistory(
+    stationID,
+    "1h"
+  );
+}
+
+
+/* ============================================================
+   HISTORY RANGE
+   ============================================================ */
+
+function setHistoryRange(
+  range
+) {
+
+  state.currentHistoryRange =
+    range;
+
+
+  document.getElementById(
+    "range1h"
+  ).classList.toggle(
+    "active",
+    range ===
+    "1h"
+  );
+
+
+  document.getElementById(
+    "range6h"
+  ).classList.toggle(
+    "active",
+    range ===
+    "6h"
+  );
+
+
+  document.getElementById(
+    "range24h"
+  ).classList.toggle(
+    "active",
+    range ===
+    "24h"
+  );
+
+
+  if (
+    state.currentDetailStation
+  ) {
+
+    loadStationHistory(
+      state.currentDetailStation,
+      range
+    );
+  }
+}
+
+
+/* ============================================================
+   HISTORY STATS
+   ============================================================ */
+
+function buildStatsHTML(
+  stats,
+  unit,
+  decimals
+) {
+
+  if (
+    !stats ||
+    !stats.samples
+  ) {
+
+    return "No data yet";
+  }
+
+
+  return `
+  Current:
+  ${formatNumber(
+    stats.current,
+    decimals
+  )}
+  ${unit}
+  <br>
+
+  Average:
+  ${formatNumber(
+    stats.average,
+    decimals
+  )}
+  ${unit}
+  <br>
+
+  Minimum:
+  ${formatNumber(
+    stats.minimum,
+    decimals
+  )}
+  ${unit}
+  <br>
+
+  Maximum:
+  ${formatNumber(
+    stats.maximum,
+    decimals
+  )}
+  ${unit}
+  <br>
+
+  Samples:
+  ${stats.samples}
+  `;
+}
+
+
+/* ============================================================
+   CHART DESTROY
+   ============================================================ */
+
+function destroyCharts() {
+
+  if (
+    state.charts.temp
+  ) {
+
+    state.charts.temp.destroy();
+  }
+
+
+  if (
+    state.charts.wind
+  ) {
+
+    state.charts.wind.destroy();
+  }
+
+
+  if (
+    state.charts.rain
+  ) {
+
+    state.charts.rain.destroy();
+  }
+
+
+  state.charts.temp =
+    null;
+
+
+  state.charts.wind =
+    null;
+
+
+  state.charts.rain =
+    null;
+}
+
+
+/* ============================================================
+   CREATE CHART
+   ============================================================ */
+
+function makeChart(
+  canvasID,
+  label,
+  labels,
+  values,
+  lineColor,
+  backgroundColor,
+  unit
+) {
+
+  return new Chart(
+    document.getElementById(
+      canvasID
+    ),
+    {
+
+      type:
+        "line",
+
+      data: {
+
+        labels,
+
+        datasets: [
+
+          {
+
+            label,
+
+            data:
+              values,
+
+            spanGaps:
+              true,
+
+            borderColor:
+              lineColor,
+
+            backgroundColor:
+              backgroundColor,
+
+            borderWidth:
+              2,
+
+            pointRadius:
+              2,
+
+            tension:
+              0.30,
+
+            fill:
+              true
+          }
+
+        ]
+      },
+
+
+      options: {
+
+        maintainAspectRatio:
+          false,
+
+        responsive:
+          true,
+
+        interaction: {
+
+          mode:
+            "index",
+
+          intersect:
+            false
+        },
+
+
+        plugins: {
+
+          legend: {
+
+            labels: {
+
+              color:
+                "#d7eef8"
+            }
+          },
+
+
+          tooltip: {
+
+            callbacks: {
+
+              label:
+                context => {
+
+                  if (
+                    context.raw ===
+                    null
+                  ) {
+
+                    return (
+                      label +
+                      ": no data"
+                    );
+                  }
+
+                  return (
+                    label +
+                    ": " +
+                    context.raw +
+                    " " +
+                    unit
+                  );
+                }
+            }
+          }
+        },
+
+
+        scales: {
+
+          x: {
+
+            ticks: {
+
+              color:
+                "#95b8ca",
+
+              maxTicksLimit:
+                8
+            },
+
+            grid: {
+
+              color:
+                "rgba(255,255,255,0.05)"
+            }
+          },
+
+
+          y: {
+
+            ticks: {
+
+              color:
+                "#95b8ca"
+            },
+
+            grid: {
+
+              color:
+                "rgba(0,210,255,0.06)"
+            }
+          }
+        }
+      }
+    }
+  );
+}
+
+
+/* ============================================================
+   LOAD HISTORY
+   ============================================================ */
+
+async function loadStationHistory(
+  stationID,
+  range
+) {
+
+  try {
+
+    const data =
+      await fetchJSON(
+        `/api/stations/${encodeURIComponent(
+          stationID
+        )}/history?range=${range}`
+      );
+
+
+    const points =
+      data.points ||
+      [];
+
+
+    const labels =
+      points.map(
+        point => {
+
+          const date =
+            new Date(
+              point.timestamp
+            );
+
+
+          return date.toLocaleTimeString();
+        }
+      );
+
+
+    const temp =
+      points.map(
+        point =>
+          point.temperature ??
+          null
+      );
+
+
+    const wind =
+      points.map(
+        point =>
+          point.wind_speed ??
+          null
+      );
+
+
+    const rain =
+      points.map(
+        point =>
+          point.rain_adc ??
+          null
+      );
+
+
+    document.getElementById(
+      "tempStats"
+    ).innerHTML =
+      buildStatsHTML(
+        data.stats?.temperature,
+        "°C",
+        1
+      );
+
+
+    document.getElementById(
+      "windStats"
+    ).innerHTML =
+      buildStatsHTML(
+        data.stats?.wind,
+        "m/s",
+        2
+      );
+
+
+    document.getElementById(
+      "rainStats"
+    ).innerHTML =
+      buildStatsHTML(
+        data.stats?.rain_adc,
+        "",
+        0
+      );
+
+
+    destroyCharts();
+
+
+    state.charts.temp =
+      makeChart(
+
+        "tempChart",
+
+        "Temperature",
+
+        labels,
+
+        temp,
+
+        "#ff9f43",
+
+        "rgba(255,159,67,0.12)",
+
+        "°C"
+      );
+
+
+    state.charts.wind =
+      makeChart(
+
+        "windChart",
+
+        "Wind Speed",
+
+        labels,
+
+        wind,
+
+        "#00d2ff",
+
+        "rgba(0,210,255,0.10)",
+
+        "m/s"
+      );
+
+
+    state.charts.rain =
+      makeChart(
+
+        "rainChart",
+
+        "Rain Sensor",
+
+        labels,
+
+        rain,
+
+        "#a259ff",
+
+        "rgba(162,89,255,0.10)",
+
+        ""
+      );
+
+  }
+
+  catch (
+    error
+  ) {
+
+    showToast(
+      error.message,
+      "error"
+    );
+  }
+}
+
+
+/* ============================================================
+   HISTORY REFRESH
+   ============================================================ */
+
+function scheduleHistoryRefresh(
+  stationID
+) {
+
+  clearTimeout(
+    state.historyRefreshTimer
+  );
+
+
+  state.historyRefreshTimer =
+    setTimeout(
+      () => {
+
+        if (
+          state.currentDetailStation ===
+          stationID
+        ) {
+
+          loadStationHistory(
+            stationID,
+            state.currentHistoryRange
+          );
+        }
+
+      },
+      700
+    );
+}
+
+
+/* ============================================================
+   CONFIGURE
+   ============================================================ */
+
+function openConfigModal(
+  stationID
+) {
+
+  const station =
+    state.stations.get(
+      stationID
+    );
+
+
+  if (
+    !station
+  ) {
+
+    return;
+  }
+
+
+  document.getElementById(
+    "configStationId"
+  ).value =
+    stationID;
+
+
+  document.getElementById(
+    "cfgStationName"
+  ).value =
+    station.station_name ||
+    "";
+
+
+  document.getElementById(
+    "cfgLocation"
+  ).value =
+    station.location ||
+    "";
+
+
+  document.getElementById(
+    "cfgWifiSSID"
+  ).value =
+    "";
+
+
+  document.getElementById(
+    "cfgWifiPassword"
+  ).value =
+    "";
+
+
+  document.getElementById(
+    "cfgAdminPassword"
+  ).value =
+    "";
+
+
+  document.getElementById(
+    "configModalSub"
+  ).textContent =
+    "Station: " +
+    stationID;
+
+
+  openModal(
+    "configModal"
+  );
+}
+
+
+/* ============================================================
+   OTA
+   ============================================================ */
+
+function openOTAModal(
+  stationID
+) {
+
+  document.getElementById(
+    "otaStationId"
+  ).value =
+    stationID;
+
+
+  document.getElementById(
+    "otaVersion"
+  ).value =
+    "";
+
+
+  document.getElementById(
+    "otaURL"
+  ).value =
+    "";
+
+
+  document.getElementById(
+    "otaAdminPassword"
+  ).value =
+    "";
+
+
+  document.getElementById(
+    "otaModalSub"
+  ).textContent =
+    "Station: " +
+    stationID;
+
+
+  openModal(
+    "otaModal"
+  );
+}
+
+
+/* ============================================================
+   REBOOT
+   ============================================================ */
+
+async function rebootStation(
+  stationID
+) {
+
+  const password =
+    prompt(
+      `Enter admin password to reboot ${stationID}`
+    );
+
+
+  if (
+    !password
+  ) {
+
+    return;
+  }
+
+
+  try {
+
+    const result =
+      await fetchJSON(
+        `/api/stations/${encodeURIComponent(
+          stationID
+        )}/reboot`,
+        {
+
+          method:
+            "POST",
+
+          headers: {
+
+            "Content-Type":
+              "application/json"
+          },
+
+          body:
+            JSON.stringify({
+
+              admin_password:
+                password
+            })
+        }
+      );
+
+
+    showToast(
+      result.message ||
+      "Reboot command sent",
+      "success"
+    );
+
+  }
+
+  catch (
+    error
+  ) {
+
+    showToast(
+      error.message,
+      "error"
+    );
+  }
+}
+
+
+/* ============================================================
+   DELETE
+   ============================================================ */
+
+async function deleteStation(
+  stationID
+) {
+
+  if (
+    !confirm(
+      `Delete ${stationID}?`
+    )
+  ) {
+
+    return;
+  }
+
+
+  const password =
+    prompt(
+      "Enter admin password"
+    );
+
+
+  if (
+    !password
+  ) {
+
+    return;
+  }
+
+
+  try {
+
+    const result =
+      await fetchJSON(
+        `/api/stations/${encodeURIComponent(
+          stationID
+        )}`,
+        {
+
+          method:
+            "DELETE",
+
+          headers: {
+
+            "Content-Type":
+              "application/json"
+          },
+
+          body:
+            JSON.stringify({
+
+              admin_password:
+                password
+            })
+        }
+      );
+
+
+    showToast(
+      result.message ||
+      "Station deleted",
+      "warn"
+    );
+
+  }
+
+  catch (
+    error
+  ) {
+
+    showToast(
+      error.message,
+      "error"
+    );
+  }
+}
+
+
+/* ============================================================
+   DELETED STATIONS
+   ============================================================ */
+
+function renderDeletedStations() {
+
+  const container =
+    document.getElementById(
+      "deletedList"
+    );
+
+
+  if (
+    state.deletedStations.length ===
+    0
+  ) {
+
+    container.innerHTML =
+      `
+      <div class="empty-state">
+      No deleted stations
+      </div>
+      `;
+
+    return;
+  }
+
+
+  container.innerHTML =
+    state.deletedStations
+      .map(
+        stationID => {
+
+          const encoded =
+            encodeURIComponent(
+              stationID
+            );
+
+
+          return `
+          <div class="deleted-item">
+
+          <strong>
+          ${escapeHTML(
+            stationID
+          )}
+          </strong>
+
+          <button
+            class="btn btn-green"
+            onclick="restoreStation(
+              decodeURIComponent(
+                '${encoded}'
+              )
+            )"
+          >
+
+          RESTORE
+
+          </button>
+
+          </div>
+          `;
+
+        }
+      )
+      .join("");
+}
+
+
+function openDeletedModal() {
+
+  document.getElementById(
+    "restoreAdminPassword"
+  ).value =
+    "";
+
+
+  renderDeletedStations();
+
+
+  openModal(
+    "deletedModal"
+  );
+}
+
+
+/* ============================================================
+   RESTORE
+   ============================================================ */
+
+async function restoreStation(
+  stationID
+) {
+
+  const password =
+    document.getElementById(
+      "restoreAdminPassword"
+    ).value;
+
+
+  if (
+    !password
+  ) {
+
+    showToast(
+      "Enter admin password",
+      "warn"
+    );
+
+    return;
+  }
+
+
+  try {
+
+    const result =
+      await fetchJSON(
+        `/api/stations/${encodeURIComponent(
+          stationID
+        )}/restore`,
+        {
+
+          method:
+            "POST",
+
+          headers: {
+
+            "Content-Type":
+              "application/json"
+          },
+
+          body:
+            JSON.stringify({
+
+              admin_password:
+                password
+            })
+        }
+      );
+
+
+    showToast(
+      result.message ||
+      "Station restored",
+      "success"
+    );
+
+
+    state.deletedStations =
+      state.deletedStations.filter(
+        item =>
+          item !==
+          stationID
+      );
+
+
+    renderDeletedStations();
+
+  }
+
+  catch (
+    error
+  ) {
+
+    showToast(
+      error.message,
+      "error"
+    );
+  }
+}
+
+
+/* ============================================================
+   CONFIG FORM
+   ============================================================ */
+
+document.getElementById(
+  "configForm"
+).addEventListener(
+  "submit",
+  async event => {
+
+    event.preventDefault();
+
+
+    const stationID =
+      document.getElementById(
+        "configStationId"
+      ).value;
+
+
+    try {
+
+      const result =
+        await fetchJSON(
+          `/api/stations/${encodeURIComponent(
+            stationID
+          )}/config`,
+          {
+
+            method:
+              "POST",
+
+            headers: {
+
+              "Content-Type":
+                "application/json"
+            },
+
+            body:
+              JSON.stringify({
+
+                station_name:
+                  document.getElementById(
+                    "cfgStationName"
+                  ).value,
+
+                location:
+                  document.getElementById(
+                    "cfgLocation"
+                  ).value,
+
+                wifi_ssid:
+                  document.getElementById(
+                    "cfgWifiSSID"
+                  ).value,
+
+                wifi_password:
+                  document.getElementById(
+                    "cfgWifiPassword"
+                  ).value,
+
+                admin_password:
+                  document.getElementById(
+                    "cfgAdminPassword"
+                  ).value
+              })
+          }
+        );
+
+
+      showToast(
+        result.message ||
+        "Configuration sent",
+        "success"
+      );
+
+
+      closeModal(
+        "configModal"
+      );
+
+    }
+
+    catch (
+      error
+    ) {
+
+      showToast(
+        error.message,
+        "error"
+      );
+    }
+
+  }
+);
+
+
+/* ============================================================
+   OTA FORM
+   ============================================================ */
+
+document.getElementById(
+  "otaForm"
+).addEventListener(
+  "submit",
+  async event => {
+
+    event.preventDefault();
+
+
+    const stationID =
+      document.getElementById(
+        "otaStationId"
+      ).value;
+
+
+    try {
+
+      const result =
+        await fetchJSON(
+          `/api/stations/${encodeURIComponent(
+            stationID
+          )}/ota`,
+          {
+
+            method:
+              "POST",
+
+            headers: {
+
+              "Content-Type":
+                "application/json"
+            },
+
+            body:
+              JSON.stringify({
+
+                version:
+                  document.getElementById(
+                    "otaVersion"
+                  ).value,
+
+                firmware_url:
+                  document.getElementById(
+                    "otaURL"
+                  ).value,
+
+                admin_password:
+                  document.getElementById(
+                    "otaAdminPassword"
+                  ).value
+              })
+          }
+        );
+
+
+      showToast(
+        result.message ||
+        "OTA command sent",
+        "success"
+      );
+
+
+      closeModal(
+        "otaModal"
+      );
+
+    }
+
+    catch (
+      error
+    ) {
+
+      showToast(
+        error.message,
+        "error"
+      );
+    }
+
+  }
+);
+
+
+/* ============================================================
+   LOG FILTER
+   ============================================================ */
+
+document.getElementById(
+  "logFilter"
+).addEventListener(
+  "change",
+  renderLogs
+);
+
+
+/* ============================================================
+   AUTO SCROLL
+   ============================================================ */
+
+document.getElementById(
+  "autoScrollBtn"
+).addEventListener(
+  "click",
+  function() {
+
+    state.autoScroll =
+      !state.autoScroll;
+
+
+    this.textContent =
+      "Auto-scroll: " +
+      (
+        state.autoScroll
+          ?
+          "ON"
+          :
+          "OFF"
+      );
+
+
+    renderLogs();
+  }
+);
+
+
+/* ============================================================
+   BACKGROUND CLICK CLOSE
+   ============================================================ */
+
+window.addEventListener(
+  "click",
+  event => {
+
+    const modals = [
+
+      "stationModal",
+
+      "configModal",
+
+      "otaModal",
+
+      "deletedModal"
+    ];
+
+
+    for (
+      const id
+      of modals
+    ) {
+
+      const modal =
+        document.getElementById(
+          id
+        );
+
+
+      if (
+        event.target ===
+        modal
+      ) {
+
+        closeModal(
+          id
+        );
+      }
+    }
+  }
+);
+
+
+/* ============================================================
+   INIT
+   ============================================================ */
+
+async function init() {
+
+  setLiveStatus(
+    false
+  );
+
+
+  await loadInitialData();
+
+
+  connectEvents();
+}
+
+
+init();
+
 </script>
+
+
 </body>
+
 </html>
