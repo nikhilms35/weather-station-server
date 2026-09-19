@@ -1,2 +1,8 @@
-node_modules/ 
-.env 
+node_modules/
+.env
+
+server--back-up.js
+
+# Firmware files stay local and private
+public/firmware/
+*.bin
