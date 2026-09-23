@@ -1,22 +1,16 @@
-require("dotenv").config();
+﻿require("dotenv").config();
 
 const express = require("express");
 const mqtt = require("mqtt");
 const path = require("path");
+const crypto = require("crypto");
 const { createClient } = require("@supabase/supabase-js");
 
 const app = express();
 
 app.use(express.json());
 
-app.use(
-  express.static(
-    path.join(
-      __dirname,
-      "public"
-    )
-  )
-);
+
 
 const PORT =
   Number(
@@ -55,6 +49,14 @@ const MQTT_TLS_REJECT_UNAUTHORIZED =
 
 const DASHBOARD_ADMIN_PASSWORD =
   process.env.DASHBOARD_ADMIN_PASSWORD ||
+  "";
+
+const DASHBOARD_LOGIN_USER =
+  process.env.DASHBOARD_LOGIN_USER ||
+  "";
+
+const DASHBOARD_LOGIN_PASSWORD =
+  process.env.DASHBOARD_LOGIN_PASSWORD ||
   "";
 
 // ============================================================
@@ -206,6 +208,144 @@ function checkAdminPassword(
     DASHBOARD_ADMIN_PASSWORD
   );
 }
+
+
+// ============================================================
+// DASHBOARD LOGIN
+// ============================================================
+
+function safeStringEqual(left, right) {
+
+  const a = Buffer.from(
+    String(left || ""),
+    "utf8"
+  );
+
+  const b = Buffer.from(
+    String(right || ""),
+    "utf8"
+  );
+
+  if (a.length !== b.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(a, b);
+}
+
+function dashboardLoginRequired(req, res, next) {
+
+  if (req.path === "/health") {
+    return next();
+  }
+
+  if (
+    !DASHBOARD_LOGIN_USER ||
+    !DASHBOARD_LOGIN_PASSWORD
+  ) {
+
+    return res.status(503).json({
+      ok: false,
+      error: "Dashboard login is not configured"
+    });
+  }
+
+  const auth =
+    String(
+      req.headers.authorization ||
+      ""
+    );
+
+  if (!auth.startsWith("Basic ")) {
+
+    res.setHeader(
+      "WWW-Authenticate",
+      'Basic realm="Weather Station Dashboard", charset="UTF-8"'
+    );
+
+    return res.status(401).send(
+      "Authentication required"
+    );
+  }
+
+  let decoded = "";
+
+  try {
+
+    decoded = Buffer
+      .from(
+        auth.slice(6),
+        "base64"
+      )
+      .toString("utf8");
+
+  } catch (_) {
+
+    decoded = "";
+  }
+
+  const separator =
+    decoded.indexOf(":");
+
+  if (separator < 0) {
+
+    res.setHeader(
+      "WWW-Authenticate",
+      'Basic realm="Weather Station Dashboard", charset="UTF-8"'
+    );
+
+    return res.status(401).send(
+      "Invalid credentials"
+    );
+  }
+
+  const username =
+    decoded.slice(
+      0,
+      separator
+    );
+
+  const password =
+    decoded.slice(
+      separator + 1
+    );
+
+  if (
+    !safeStringEqual(
+      username,
+      DASHBOARD_LOGIN_USER
+    ) ||
+    !safeStringEqual(
+      password,
+      DASHBOARD_LOGIN_PASSWORD
+    )
+  ) {
+
+    res.setHeader(
+      "WWW-Authenticate",
+      'Basic realm="Weather Station Dashboard", charset="UTF-8"'
+    );
+
+    return res.status(401).send(
+      "Invalid credentials"
+    );
+  }
+
+  next();
+}
+
+app.use(
+  dashboardLoginRequired
+);
+
+app.use(
+  express.static(
+    path.join(
+      __dirname,
+      "public"
+    )
+  )
+);
 
 // ============================================================
 // PERMANENT DELETE HELPERS
@@ -1994,7 +2134,7 @@ app.post(
       addLog(
         "OTA",
         stationID,
-        `OTA command sent â†’ ${version}`
+        `OTA command sent Ã¢â€ â€™ ${version}`
       );
 
       res.json({
@@ -2502,10 +2642,10 @@ mqttClient.on(
               `${formatNumber(
                 oldTemperature,
                 1
-              )} Â°C â†’ ${formatNumber(
+              )} Ã‚Â°C Ã¢â€ â€™ ${formatNumber(
                 newTemperature,
                 1
-              )} Â°C`
+              )} Ã‚Â°C`
             );
           }
 
@@ -2553,7 +2693,7 @@ mqttClient.on(
             addLog(
               "RAIN",
               displayName,
-              `${oldRain} â†’ ${newRain}`
+              `${oldRain} Ã¢â€ â€™ ${newRain}`
             );
           }
 
@@ -2607,7 +2747,7 @@ mqttClient.on(
               `${formatNumber(
                 oldWind,
                 2
-              )} â†’ ${formatNumber(
+              )} Ã¢â€ â€™ ${formatNumber(
                 newWind,
                 2
               )} m/s`
