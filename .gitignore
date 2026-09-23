@@ -5,4 +5,6 @@ server--back-up.js
 
 # Firmware files stay local and private
 public/firmware/
-*.bin
+*.binserver-before-permanent-delete-backup.js
+
+server-before-permanent-delete-backup.js

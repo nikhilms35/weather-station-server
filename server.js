@@ -3,6 +3,7 @@ require("dotenv").config();
 const express = require("express");
 const mqtt = require("mqtt");
 const path = require("path");
+const { createClient } = require("@supabase/supabase-js");
 
 const app = express();
 
@@ -44,20 +45,49 @@ const MQTT_PASSWORD =
 
 const MQTT_TLS_REJECT_UNAUTHORIZED =
   String(
-    process.env
-      .MQTT_TLS_REJECT_UNAUTHORIZED ||
+    process.env.MQTT_TLS_REJECT_UNAUTHORIZED ||
     "true"
-  ).toLowerCase() !==
-  "false";
+  ).toLowerCase() !== "false";
 
 // ============================================================
-// DASHBOARD ADMIN PASSWORD
+// DASHBOARD ADMIN
 // ============================================================
 
 const DASHBOARD_ADMIN_PASSWORD =
-  process.env
-    .DASHBOARD_ADMIN_PASSWORD ||
+  process.env.DASHBOARD_ADMIN_PASSWORD ||
   "";
+
+// ============================================================
+// SUPABASE - PERMANENT STATION DELETE
+// ============================================================
+
+const SUPABASE_URL =
+  process.env.SUPABASE_URL ||
+  "";
+
+const SUPABASE_SERVICE_ROLE_KEY =
+  process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  "";
+
+let supabase = null;
+
+if (
+  SUPABASE_URL &&
+  SUPABASE_SERVICE_ROLE_KEY
+) {
+
+  supabase =
+    createClient(
+      SUPABASE_URL,
+      SUPABASE_SERVICE_ROLE_KEY,
+      {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false
+        }
+      }
+    );
+}
 
 // ============================================================
 // OTA DEVICE SECRETS
@@ -68,14 +98,12 @@ let otaDeviceSecrets = {};
 try {
 
   if (
-    process.env
-      .OTA_DEVICE_SECRETS_JSON
+    process.env.OTA_DEVICE_SECRETS_JSON
   ) {
 
     otaDeviceSecrets =
       JSON.parse(
-        process.env
-          .OTA_DEVICE_SECRETS_JSON
+        process.env.OTA_DEVICE_SECRETS_JSON
       );
   }
 
@@ -90,7 +118,7 @@ catch (error) {
 }
 
 // ============================================================
-// MAIN DATA STORAGE
+// MAIN STORAGE
 // ============================================================
 
 const stations =
@@ -98,6 +126,12 @@ const stations =
 
 const ignoredStations =
   new Set();
+
+const permanentlyDeletedStations =
+  new Set();
+
+let permanentDeleteListLoaded =
+  false;
 
 const logs =
   [];
@@ -111,28 +145,6 @@ const MAX_LOGS =
 // ============================================================
 // HISTORY STORAGE
 // ============================================================
-//
-// Each station gets its own array:
-//
-// SKY_TEST
-// [
-//   {
-//     timestamp,
-//     temperature,
-//     wind_speed,
-//     rain_adc,
-//     rain
-//   }
-// ]
-//
-// History is kept for 24 hours.
-//
-// NOTE:
-// This is RAM storage.
-// Restarting Node / Render will clear history.
-// Later we can move this to a database.
-//
-// ============================================================
 
 const stationHistory =
   new Map();
@@ -143,13 +155,11 @@ const HISTORY_RETENTION_MS =
   60 *
   1000;
 
-// Extra safety so a broken station cannot fill RAM forever.
-
 const MAX_HISTORY_POINTS_PER_STATION =
   10000;
 
 // ============================================================
-// SENSOR LOG CHANGE THRESHOLDS
+// CHANGE THRESHOLDS
 // ============================================================
 
 const TEMP_CHANGE_THRESHOLD =
@@ -159,7 +169,22 @@ const WIND_CHANGE_THRESHOLD =
   0.2;
 
 // ============================================================
-// ADMIN PASSWORD CHECK
+// OFFLINE DETECTION
+// ============================================================
+
+// Station is considered offline if no valid station message
+// is received for 30 seconds.
+
+const OFFLINE_TIMEOUT_MS =
+  30000;
+
+// Check every 5 seconds.
+
+const OFFLINE_CHECK_INTERVAL_MS =
+  5000;
+
+// ============================================================
+// ADMIN CHECK
 // ============================================================
 
 function checkAdminPassword(
@@ -181,6 +206,168 @@ function checkAdminPassword(
     DASHBOARD_ADMIN_PASSWORD
   );
 }
+
+// ============================================================
+// PERMANENT DELETE HELPERS
+// ============================================================
+
+async function loadPermanentlyDeletedStations() {
+
+  if (
+    !supabase
+  ) {
+
+    addLog(
+      "WARN",
+      "SERVER",
+      "Supabase permanent-delete storage is not configured"
+    );
+
+    return false;
+  }
+
+  try {
+
+    const {
+      data,
+      error
+    } =
+      await supabase
+        .from(
+          "deleted_stations"
+        )
+        .select(
+          "station_id"
+        );
+
+    if (
+      error
+    ) {
+
+      throw error;
+    }
+
+    permanentlyDeletedStations.clear();
+
+    for (
+      const row
+      of data || []
+    ) {
+
+      const stationID =
+        String(
+          row.station_id ||
+          ""
+        ).trim();
+
+      if (
+        stationID
+      ) {
+
+        permanentlyDeletedStations.add(
+          stationID
+        );
+
+        ignoredStations.delete(
+          stationID
+        );
+
+        stations.delete(
+          stationID
+        );
+
+        stationHistory.delete(
+          stationID
+        );
+      }
+    }
+
+    permanentDeleteListLoaded =
+      true;
+
+    addLog(
+      "SUCCESS",
+      "SERVER",
+      `Loaded ${permanentlyDeletedStations.size} permanently deleted station(s)`
+    );
+
+    return true;
+  }
+
+  catch (
+    error
+  ) {
+
+    permanentDeleteListLoaded =
+      false;
+
+    addLog(
+      "ERROR",
+      "SERVER",
+      `Failed to load permanent delete list: ${error.message}`
+    );
+
+    return false;
+  }
+}
+
+
+function isPermanentlyDeleted(
+  stationID
+) {
+
+  return permanentlyDeletedStations.has(
+    String(
+      stationID ||
+      ""
+    )
+  );
+}
+
+
+async function savePermanentDelete(
+  stationID
+) {
+
+  if (
+    !supabase
+  ) {
+
+    throw new Error(
+      "Supabase permanent-delete storage is not configured"
+    );
+  }
+
+  const {
+    error
+  } =
+    await supabase
+      .from(
+        "deleted_stations"
+      )
+      .upsert(
+        {
+          station_id:
+            stationID,
+
+          deleted_at:
+            new Date()
+              .toISOString()
+        },
+        {
+          onConflict:
+            "station_id"
+        }
+      );
+
+  if (
+    error
+  ) {
+
+    throw error;
+  }
+}
+
 
 // ============================================================
 // SSE BROADCAST
@@ -264,7 +451,7 @@ function addLog(
 }
 
 // ============================================================
-// GENERAL HELPERS
+// HELPERS
 // ============================================================
 
 function numberChanged(
@@ -382,10 +569,6 @@ function getStationHistoryArray(
 }
 
 
-// ============================================================
-// REMOVE OLD HISTORY
-// ============================================================
-
 function trimStationHistory(
   stationID
 ) {
@@ -418,10 +601,6 @@ function trimStationHistory(
   }
 }
 
-
-// ============================================================
-// ADD HISTORY POINT
-// ============================================================
 
 function addHistoryPoint(
   stationID,
@@ -462,10 +641,8 @@ function addHistoryPoint(
       ),
 
     rain:
-      data.rain !==
-        undefined &&
-      data.rain !==
-        null
+      data.rain !== undefined &&
+      data.rain !== null
         ?
         String(
           data.rain
@@ -493,7 +670,6 @@ function addHistoryPoint(
   );
 }
 
-
 // ============================================================
 // HISTORY RANGE
 // ============================================================
@@ -518,7 +694,6 @@ function rangeToMilliseconds(
         1000
       );
 
-
     case "6h":
 
       return (
@@ -528,7 +703,6 @@ function rangeToMilliseconds(
         1000
       );
 
-
     case "24h":
 
       return (
@@ -537,7 +711,6 @@ function rangeToMilliseconds(
         60 *
         1000
       );
-
 
     default:
 
@@ -550,9 +723,8 @@ function rangeToMilliseconds(
   }
 }
 
-
 // ============================================================
-// CALCULATE STATISTICS
+// STATISTICS
 // ============================================================
 
 function calculateStats(
@@ -560,22 +732,23 @@ function calculateStats(
 ) {
 
   const valid =
-    values.filter(
-      value =>
-        value !== null &&
-        value !== undefined &&
-        Number.isFinite(
+    values
+      .filter(
+        value =>
+          value !== null &&
+          value !== undefined &&
+          Number.isFinite(
+            Number(
+              value
+            )
+          )
+      )
+      .map(
+        value =>
           Number(
             value
           )
-        )
-    )
-    .map(
-      value =>
-        Number(
-          value
-        )
-    );
+      );
 
   if (
     valid.length ===
@@ -638,7 +811,6 @@ function calculateStats(
       valid.length
   };
 }
-
 
 // ============================================================
 // MQTT CLIENT
@@ -715,8 +887,23 @@ app.get(
       deleted_stations:
         ignoredStations.size,
 
+      permanently_deleted_stations:
+        permanentlyDeletedStations.size,
+
+      permanent_delete_list_loaded:
+        permanentDeleteListLoaded,
+
+      supabase_configured:
+        Boolean(
+          supabase
+        ),
+
       history_stations:
         stationHistory.size,
+
+      offline_timeout_seconds:
+        OFFLINE_TIMEOUT_MS /
+        1000,
 
       uptime_seconds:
         Math.floor(
@@ -775,6 +962,26 @@ app.get(
     const stationID =
       req.params.stationID;
 
+    if (
+      isPermanentlyDeleted(
+        stationID
+      )
+    ) {
+
+      return res
+        .status(
+          410
+        )
+        .json({
+
+          ok:
+            false,
+
+          error:
+            "Station has been permanently deleted"
+        });
+    }
+
     const station =
       stations.get(
         stationID
@@ -805,19 +1012,7 @@ app.get(
 );
 
 // ============================================================
-// GET STATION HISTORY
-// ============================================================
-//
-// Examples:
-//
-// /api/stations/SKY_TEST/history
-//
-// /api/stations/SKY_TEST/history?range=1h
-//
-// /api/stations/SKY_TEST/history?range=6h
-//
-// /api/stations/SKY_TEST/history?range=24h
-//
+// HISTORY API
 // ============================================================
 
 app.get(
@@ -878,6 +1073,7 @@ app.get(
         )
         .map(
           point => ({
+
             timestamp:
               point.timestamp,
 
@@ -895,46 +1091,12 @@ app.get(
           })
         );
 
-    const temperatureStats =
-      calculateStats(
-        points.map(
-          point =>
-            point.temperature
-        )
-      );
-
-    const windStats =
-      calculateStats(
-        points.map(
-          point =>
-            point.wind_speed
-        )
-      );
-
-    const rainAdcStats =
-      calculateStats(
-        points.map(
-          point =>
-            point.rain_adc
-        )
-      );
-
     res.json({
 
       station_id:
         stationID,
 
-      range:
-        range,
-
-      from:
-        new Date(
-          cutoff
-        ).toISOString(),
-
-      to:
-        new Date()
-          .toISOString(),
+      range,
 
       samples:
         points.length,
@@ -942,23 +1104,37 @@ app.get(
       stats: {
 
         temperature:
-          temperatureStats,
+          calculateStats(
+            points.map(
+              point =>
+                point.temperature
+            )
+          ),
 
         wind:
-          windStats,
+          calculateStats(
+            points.map(
+              point =>
+                point.wind_speed
+            )
+          ),
 
         rain_adc:
-          rainAdcStats
+          calculateStats(
+            points.map(
+              point =>
+                point.rain_adc
+            )
+          )
       },
 
-      points:
-        points
+      points
     });
   }
 );
 
 // ============================================================
-// GET DELETED STATIONS
+// DELETED STATIONS
 // ============================================================
 
 app.get(
@@ -968,29 +1144,184 @@ app.get(
     res
   ) => {
 
-    const deleted =
+    res.json(
       [
         ...ignoredStations
-      ]
-      .sort(
-        (
-          a,
-          b
-        ) =>
-          String(
-            a
-          ).localeCompare(
-            String(
-              b
-            )
-          )
-      );
-
-    res.json(
-      deleted
+      ].sort()
     );
   }
 );
+
+// ============================================================
+// PERMANENTLY DELETED STATIONS
+// ============================================================
+
+app.get(
+  "/api/permanently-deleted-stations",
+  (
+    req,
+    res
+  ) => {
+
+    res.json(
+      [
+        ...permanentlyDeletedStations
+      ].sort()
+    );
+  }
+);
+
+
+// ============================================================
+// PERMANENT DELETE STATION
+// ============================================================
+
+app.delete(
+  "/api/stations/:stationID/permanent",
+  async (
+    req,
+    res
+  ) => {
+
+    const stationID =
+      String(
+        req.params.stationID ||
+        ""
+      ).trim();
+
+    if (
+      !checkAdminPassword(
+        req.body.admin_password
+      )
+    ) {
+
+      return res
+        .status(
+          401
+        )
+        .json({
+
+          ok:
+            false,
+
+          error:
+            "Incorrect admin password"
+        });
+    }
+
+    if (
+      !stationID
+    ) {
+
+      return res
+        .status(
+          400
+        )
+        .json({
+
+          ok:
+            false,
+
+          error:
+            "Station ID is required"
+        });
+    }
+
+    try {
+
+      await savePermanentDelete(
+        stationID
+      );
+
+      permanentlyDeletedStations.add(
+        stationID
+      );
+
+      stations.delete(
+        stationID
+      );
+
+      stationHistory.delete(
+        stationID
+      );
+
+      ignoredStations.delete(
+        stationID
+      );
+
+      addLog(
+        "WARN",
+        stationID,
+        "Station permanently deleted"
+      );
+
+      broadcast(
+        "station_deleted",
+        {
+          station_id:
+            stationID,
+
+          permanent:
+            true
+        }
+      );
+
+      broadcast(
+        "deleted_stations",
+        [
+          ...ignoredStations
+        ]
+      );
+
+      broadcast(
+        "permanently_deleted_stations",
+        [
+          ...permanentlyDeletedStations
+        ]
+      );
+
+      return res.json({
+
+        ok:
+          true,
+
+        permanent:
+          true,
+
+        station_id:
+          stationID,
+
+        message:
+          `${stationID} permanently deleted`
+      });
+    }
+
+    catch (
+      error
+    ) {
+
+      addLog(
+        "ERROR",
+        stationID,
+        `Permanent delete failed: ${error.message}`
+      );
+
+      return res
+        .status(
+          500
+        )
+        .json({
+
+          ok:
+            false,
+
+          error:
+            error.message
+        });
+    }
+  }
+);
+
 
 // ============================================================
 // LOG API
@@ -1037,7 +1368,7 @@ app.get(
 );
 
 // ============================================================
-// SSE EVENTS
+// SSE
 // ============================================================
 
 app.get(
@@ -1113,7 +1444,7 @@ app.get(
 );
 
 // ============================================================
-// MQTT PUBLISH HELPER
+// MQTT PUBLISH
 // ============================================================
 
 function publishMQTT(
@@ -1195,6 +1526,46 @@ app.post(
     const stationID =
       req.params.stationID;
 
+    if (
+      isPermanentlyDeleted(
+        stationID
+      )
+    ) {
+
+      return res
+        .status(
+          410
+        )
+        .json({
+
+          ok:
+            false,
+
+          error:
+            "Station has already been permanently deleted"
+        });
+    }
+
+    if (
+      isPermanentlyDeleted(
+        stationID
+      )
+    ) {
+
+      return res
+        .status(
+          410
+        )
+        .json({
+
+          ok:
+            false,
+
+          error:
+            "Station has been permanently deleted"
+        });
+    }
+
     try {
 
       await publishMQTT(
@@ -1229,7 +1600,7 @@ app.post(
 );
 
 // ============================================================
-// REMOTE REBOOT
+// REBOOT
 // ============================================================
 
 app.post(
@@ -1242,13 +1613,29 @@ app.post(
     const stationID =
       req.params.stationID;
 
-    const adminPassword =
-      req.body
-        .admin_password;
+    if (
+      isPermanentlyDeleted(
+        stationID
+      )
+    ) {
+
+      return res
+        .status(
+          410
+        )
+        .json({
+
+          ok:
+            false,
+
+          error:
+            "Station has been permanently deleted"
+        });
+    }
 
     if (
       !checkAdminPassword(
-        adminPassword
+        req.body.admin_password
       )
     ) {
 
@@ -1296,12 +1683,6 @@ app.post(
       error
     ) {
 
-      addLog(
-        "ERROR",
-        stationID,
-        `Reboot failed: ${error.message}`
-      );
-
       res
         .status(
           500
@@ -1319,7 +1700,7 @@ app.post(
 );
 
 // ============================================================
-// REMOTE CONFIGURE
+// CONFIG
 // ============================================================
 
 app.post(
@@ -1332,13 +1713,29 @@ app.post(
     const stationID =
       req.params.stationID;
 
-    const adminPassword =
-      req.body
-        .admin_password;
+    if (
+      isPermanentlyDeleted(
+        stationID
+      )
+    ) {
+
+      return res
+        .status(
+          410
+        )
+        .json({
+
+          ok:
+            false,
+
+          error:
+            "Station has been permanently deleted"
+        });
+    }
 
     if (
       !checkAdminPassword(
-        adminPassword
+        req.body.admin_password
       )
     ) {
 
@@ -1365,17 +1762,13 @@ app.post(
         stationID
     };
 
-
     if (
-      typeof req.body
-        .station_name ===
+      typeof req.body.station_name ===
       "string"
     ) {
 
       const value =
-        req.body
-          .station_name
-          .trim();
+        req.body.station_name.trim();
 
       if (
         value
@@ -1386,54 +1779,41 @@ app.post(
       }
     }
 
-
     if (
-      typeof req.body
-        .location ===
+      typeof req.body.location ===
       "string"
     ) {
 
       command.location =
-        req.body
-          .location
-          .trim();
+        req.body.location.trim();
     }
 
-
     if (
-      typeof req.body
-        .wifi_ssid ===
+      typeof req.body.wifi_ssid ===
       "string"
     ) {
 
-      const wifiSSID =
-        req.body
-          .wifi_ssid
-          .trim();
+      const ssid =
+        req.body.wifi_ssid.trim();
 
       if (
-        wifiSSID
+        ssid
       ) {
 
         command.wifi_ssid =
-          wifiSSID;
+          ssid;
       }
     }
 
-
     if (
-      typeof req.body
-        .wifi_password ===
+      typeof req.body.wifi_password ===
       "string" &&
-      req.body
-        .wifi_password
-        .length >
-        0
+      req.body.wifi_password.length >
+      0
     ) {
 
       command.wifi_password =
-        req.body
-          .wifi_password;
+        req.body.wifi_password;
     }
 
     try {
@@ -1463,12 +1843,6 @@ app.post(
       error
     ) {
 
-      addLog(
-        "ERROR",
-        stationID,
-        `Configuration failed: ${error.message}`
-      );
-
       res
         .status(
           500
@@ -1486,7 +1860,7 @@ app.post(
 );
 
 // ============================================================
-// OTA UPDATE
+// OTA
 // ============================================================
 
 app.post(
@@ -1500,20 +1874,17 @@ app.post(
       req.params.stationID;
 
     const adminPassword =
-      req.body
-        .admin_password;
+      req.body.admin_password;
 
     const firmwareURL =
       String(
-        req.body
-          .firmware_url ||
+        req.body.firmware_url ||
         ""
       ).trim();
 
     const version =
       String(
-        req.body
-          .version ||
+        req.body.version ||
         ""
       ).trim();
 
@@ -1537,7 +1908,6 @@ app.post(
         });
     }
 
-
     if (
       !firmwareURL.startsWith(
         "https://"
@@ -1558,7 +1928,6 @@ app.post(
         });
     }
 
-
     if (
       !version
     ) {
@@ -1576,7 +1945,6 @@ app.post(
             "Firmware version is required"
         });
     }
-
 
     const deviceSecret =
       otaDeviceSecrets[
@@ -1601,37 +1969,32 @@ app.post(
         });
     }
 
-
-    const otaCommand = {
-
-      command:
-        "ota",
-
-      station:
-        stationID,
-
-      secret:
-        deviceSecret,
-
-      url:
-        firmwareURL,
-
-      version:
-        version
-    };
-
-
     try {
 
       await publishMQTT(
         `weather/${stationID}/ota`,
-        otaCommand
+        {
+
+          command:
+            "ota",
+
+          station:
+            stationID,
+
+          secret:
+            deviceSecret,
+
+          url:
+            firmwareURL,
+
+          version
+        }
       );
 
       addLog(
         "OTA",
         stationID,
-        `OTA command sent → ${version}`
+        `OTA command sent â†’ ${version}`
       );
 
       res.json({
@@ -1640,25 +2003,13 @@ app.post(
           true,
 
         message:
-          "OTA command sent",
-
-        station:
-          stationID,
-
-        version:
-          version
+          "OTA command sent"
       });
 
     }
     catch (
       error
     ) {
-
-      addLog(
-        "ERROR",
-        stationID,
-        `OTA command failed: ${error.message}`
-      );
 
       res
         .status(
@@ -1677,7 +2028,7 @@ app.post(
 );
 
 // ============================================================
-// DELETE STATION
+// DELETE
 // ============================================================
 
 app.delete(
@@ -1690,13 +2041,9 @@ app.delete(
     const stationID =
       req.params.stationID;
 
-    const adminPassword =
-      req.body
-        .admin_password;
-
     if (
       !checkAdminPassword(
-        adminPassword
+        req.body.admin_password
       )
     ) {
 
@@ -1714,7 +2061,6 @@ app.delete(
         });
     }
 
-
     stations.delete(
       stationID
     );
@@ -1723,23 +2069,19 @@ app.delete(
       stationID
     );
 
-
     addLog(
       "WARN",
       stationID,
       "Station removed from dashboard"
     );
 
-
     broadcast(
       "station_deleted",
       {
-
         station_id:
           stationID
       }
     );
-
 
     broadcast(
       "deleted_stations",
@@ -1747,7 +2089,6 @@ app.delete(
         ...ignoredStations
       ]
     );
-
 
     res.json({
 
@@ -1761,7 +2102,7 @@ app.delete(
 );
 
 // ============================================================
-// RESTORE STATION
+// RESTORE
 // ============================================================
 
 app.post(
@@ -1774,13 +2115,29 @@ app.post(
     const stationID =
       req.params.stationID;
 
-    const adminPassword =
-      req.body
-        .admin_password;
+    if (
+      isPermanentlyDeleted(
+        stationID
+      )
+    ) {
+
+      return res
+        .status(
+          410
+        )
+        .json({
+
+          ok:
+            false,
+
+          error:
+            "Permanently deleted stations cannot be restored from the dashboard"
+        });
+    }
 
     if (
       !checkAdminPassword(
-        adminPassword
+        req.body.admin_password
       )
     ) {
 
@@ -1797,7 +2154,6 @@ app.post(
             "Incorrect admin password"
         });
     }
-
 
     if (
       !ignoredStations.has(
@@ -1819,11 +2175,9 @@ app.post(
         });
     }
 
-
     ignoredStations.delete(
       stationID
     );
-
 
     addLog(
       "INFO",
@@ -1831,16 +2185,13 @@ app.post(
       "Station restored"
     );
 
-
     broadcast(
       "station_restored",
       {
-
         station_id:
           stationID
       }
     );
-
 
     broadcast(
       "deleted_stations",
@@ -1848,7 +2199,6 @@ app.post(
         ...ignoredStations
       ]
     );
-
 
     try {
 
@@ -1863,15 +2213,7 @@ app.post(
       }
 
     }
-    catch (
-      error
-    ) {
-
-      console.log(
-        `Could not request status from ${stationID}: ${error.message}`
-      );
-    }
-
+    catch (_) {}
 
     res.json({
 
@@ -1907,11 +2249,9 @@ mqttClient.on(
       "weather/+/ota/status"
     ];
 
-
     mqttClient.subscribe(
       topics,
       {
-
         qos:
           0
       },
@@ -1930,7 +2270,6 @@ mqttClient.on(
           return;
         }
 
-
         addLog(
           "SUCCESS",
           "SERVER",
@@ -1942,7 +2281,7 @@ mqttClient.on(
 );
 
 // ============================================================
-// MQTT RECONNECT
+// MQTT CONNECTION EVENTS
 // ============================================================
 
 mqttClient.on(
@@ -1957,10 +2296,6 @@ mqttClient.on(
   }
 );
 
-// ============================================================
-// MQTT OFFLINE
-// ============================================================
-
 mqttClient.on(
   "offline",
   () => {
@@ -1972,10 +2307,6 @@ mqttClient.on(
     );
   }
 );
-
-// ============================================================
-// MQTT ERROR
-// ============================================================
 
 mqttClient.on(
   "error",
@@ -2007,7 +2338,6 @@ mqttClient.on(
           "/"
         );
 
-
       if (
         parts.length <
           3 ||
@@ -2018,10 +2348,17 @@ mqttClient.on(
         return;
       }
 
-
       const stationID =
         parts[1];
 
+      if (
+        isPermanentlyDeleted(
+          stationID
+        )
+      ) {
+
+        return;
+      }
 
       if (
         ignoredStations.has(
@@ -2032,7 +2369,6 @@ mqttClient.on(
         return;
       }
 
-
       const messageType =
         parts
           .slice(
@@ -2042,18 +2378,15 @@ mqttClient.on(
             "/"
           );
 
-
       const data =
         JSON.parse(
           buffer.toString()
         );
 
-
       const oldStation =
         stations.get(
           stationID
         );
-
 
       const station =
         oldStation
@@ -2080,36 +2413,29 @@ mqttClient.on(
               null
           };
 
+      // IMPORTANT:
+      // Every valid message from this station updates last_seen.
 
-      // ======================================================
-      // COMMON DATA
-      // ======================================================
+      station.last_seen =
+        new Date()
+          .toISOString();
 
       station.station_id =
         stationID;
-
 
       station.station_name =
         data.station_name ||
         station.station_name ||
         stationID;
 
-
       station.location =
         data.location ||
         station.location ||
         "";
 
-
-      station.last_seen =
-        new Date()
-          .toISOString();
-
-
       const displayName =
         station.station_name ||
         stationID;
-
 
       // ======================================================
       // TELEMETRY
@@ -2120,24 +2446,17 @@ mqttClient.on(
         "telemetry"
       ) {
 
-        // ----------------------------------------------------
-        // SAVE HISTORY FIRST
-        // ----------------------------------------------------
-
         addHistoryPoint(
           stationID,
           data
         );
 
-
         const wasOnline =
           station.online ===
           true;
 
-
         station.online =
           true;
-
 
         if (
           !wasOnline
@@ -2150,11 +2469,6 @@ mqttClient.on(
           );
         }
 
-
-        // ----------------------------------------------------
-        // TEMPERATURE
-        // ----------------------------------------------------
-
         if (
           data.temperature !==
             undefined &&
@@ -2165,12 +2479,10 @@ mqttClient.on(
           const oldTemperature =
             station.temperature;
 
-
           const newTemperature =
             Number(
               data.temperature
             );
-
 
           if (
             oldTemperature !==
@@ -2190,22 +2502,16 @@ mqttClient.on(
               `${formatNumber(
                 oldTemperature,
                 1
-              )} °C → ${formatNumber(
+              )} Â°C â†’ ${formatNumber(
                 newTemperature,
                 1
-              )} °C`
+              )} Â°C`
             );
           }
-
 
           station.temperature =
             newTemperature;
         }
-
-
-        // ----------------------------------------------------
-        // PRESSURE
-        // ----------------------------------------------------
 
         if (
           data.pressure !==
@@ -2220,11 +2526,6 @@ mqttClient.on(
             );
         }
 
-
-        // ----------------------------------------------------
-        // RAIN STATUS
-        // ----------------------------------------------------
-
         if (
           data.rain !==
             undefined &&
@@ -2235,12 +2536,10 @@ mqttClient.on(
           const oldRain =
             station.rain;
 
-
           const newRain =
             String(
               data.rain
             );
-
 
           if (
             oldRain !==
@@ -2254,19 +2553,13 @@ mqttClient.on(
             addLog(
               "RAIN",
               displayName,
-              `${oldRain} → ${newRain}`
+              `${oldRain} â†’ ${newRain}`
             );
           }
-
 
           station.rain =
             newRain;
         }
-
-
-        // ----------------------------------------------------
-        // RAIN ADC
-        // ----------------------------------------------------
 
         if (
           data.rain_adc !==
@@ -2281,11 +2574,6 @@ mqttClient.on(
             );
         }
 
-
-        // ----------------------------------------------------
-        // WIND
-        // ----------------------------------------------------
-
         if (
           data.wind_speed !==
             undefined &&
@@ -2296,12 +2584,10 @@ mqttClient.on(
           const oldWind =
             station.wind_speed;
 
-
           const newWind =
             Number(
               data.wind_speed
             );
-
 
           if (
             oldWind !==
@@ -2321,59 +2607,47 @@ mqttClient.on(
               `${formatNumber(
                 oldWind,
                 2
-              )} → ${formatNumber(
+              )} â†’ ${formatNumber(
                 newWind,
                 2
               )} m/s`
             );
           }
 
-
           station.wind_speed =
             newWind;
         }
-
-
-        // ----------------------------------------------------
-        // DEVICE INFO
-        // ----------------------------------------------------
 
         station.firmware =
           data.firmware ||
           station.firmware ||
           null;
 
-
         station.network =
           data.network ||
           station.network ||
           null;
-
 
         station.ip =
           data.ip ||
           station.ip ||
           null;
 
-
         station.mac =
           data.mac ||
           station.mac ||
           null;
-
 
         station.wifi_rssi =
           data.wifi_rssi ??
           station.wifi_rssi ??
           null;
 
-
         station.link_speed =
           data.link_speed ??
           station.link_speed ??
           null;
       }
-
 
       // ======================================================
       // STATUS
@@ -2387,7 +2661,6 @@ mqttClient.on(
         const previousOnline =
           station.online;
 
-
         const newOnline =
           typeof data.online ===
             "boolean"
@@ -2396,86 +2669,71 @@ mqttClient.on(
             :
             true;
 
-
         station.online =
           newOnline;
-
 
         station.firmware =
           data.firmware ||
           station.firmware ||
           null;
 
-
         station.network =
           data.network ||
           station.network ||
           null;
-
 
         station.ip =
           data.ip ||
           station.ip ||
           null;
 
-
         station.mac =
           data.mac ||
           station.mac ||
           null;
-
 
         station.wifi_rssi =
           data.wifi_rssi ??
           station.wifi_rssi ??
           null;
 
-
         station.link_speed =
           data.link_speed ??
           station.link_speed ??
           null;
-
 
         station.ads1115 =
           data.ads1115 ??
           station.ads1115 ??
           null;
 
-
         station.bmp280 =
           data.bmp280 ??
           station.bmp280 ??
           null;
-
 
         if (
           previousOnline !==
           newOnline
         ) {
 
-          if (
+          addLog(
             newOnline
-          ) {
-
-            addLog(
-              "ONLINE",
-              displayName,
-              "Station online"
-            );
-
-          }
-          else {
-
-            addLog(
+              ?
+              "ONLINE"
+              :
               "OFFLINE",
-              displayName,
+
+            displayName,
+
+            newOnline
+              ?
+              "Station online"
+              :
               "Station offline"
-            );
-          }
+          );
         }
       }
-
 
       // ======================================================
       // OTA STATUS
@@ -2490,19 +2748,15 @@ mqttClient.on(
           data.status ||
           "unknown";
 
-
         const message =
           data.message ||
           "";
 
-
         station.ota_status =
           status;
 
-
         station.ota_message =
           message;
-
 
         addLog(
           "OTA",
@@ -2515,20 +2769,10 @@ mqttClient.on(
         );
       }
 
-
-      // ======================================================
-      // STORE STATION
-      // ======================================================
-
       stations.set(
         stationID,
         station
       );
-
-
-      // ======================================================
-      // SEND LIVE UPDATE
-      // ======================================================
 
       broadcast(
         "station",
@@ -2550,7 +2794,7 @@ mqttClient.on(
 );
 
 // ============================================================
-// OFFLINE DETECTOR
+// FAST OFFLINE DETECTOR
 // ============================================================
 
 setInterval(
@@ -2558,7 +2802,6 @@ setInterval(
 
     const now =
       Date.now();
-
 
     for (
       const [
@@ -2575,37 +2818,35 @@ setInterval(
         continue;
       }
 
-
       const lastSeen =
         new Date(
           station.last_seen
         ).getTime();
 
+      const silenceTime =
+        now -
+        lastSeen;
 
       if (
-        now -
-          lastSeen >
-          75000 &&
+        silenceTime >
+          OFFLINE_TIMEOUT_MS &&
         station.online
       ) {
 
         station.online =
           false;
 
-
         stations.set(
           stationID,
           station
         );
 
-
         addLog(
           "OFFLINE",
           station.station_name ||
           stationID,
-          "No data received for 75 seconds"
+          "No data received for 30 seconds"
         );
-
 
         broadcast(
           "station",
@@ -2614,7 +2855,7 @@ setInterval(
       }
     }
   },
-  15000
+  OFFLINE_CHECK_INTERVAL_MS
 );
 
 // ============================================================
@@ -2644,15 +2885,35 @@ setInterval(
 // START SERVER
 // ============================================================
 
-app.listen(
-  PORT,
-  "0.0.0.0",
-  () => {
+async function startServer() {
 
-    addLog(
-      "SUCCESS",
-      "SERVER",
-      `Dashboard started on port ${PORT}`
-    );
-  }
-);
+  await loadPermanentlyDeletedStations();
+
+  app.listen(
+    PORT,
+    "0.0.0.0",
+    () => {
+
+      addLog(
+        "SUCCESS",
+        "SERVER",
+        `Dashboard started on port ${PORT}`
+      );
+
+      addLog(
+        "INFO",
+        "SERVER",
+        `Offline timeout: ${OFFLINE_TIMEOUT_MS / 1000}s`
+      );
+
+      addLog(
+        "INFO",
+        "SERVER",
+        `Permanent deleted stations: ${permanentlyDeletedStations.size}`
+      );
+    }
+  );
+}
+
+
+startServer();

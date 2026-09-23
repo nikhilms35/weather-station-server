@@ -505,6 +505,45 @@ body::after {
 }
 
 
+.btn-permanent {
+
+  background:
+
+    linear-gradient(
+      180deg,
+      #8b0f1f,
+      #3b050c
+    );
+
+  color:
+    #ffd7dd;
+
+  border:
+    1px solid
+    rgba(255,84,112,0.55);
+
+  box-shadow:
+    0 0 0 1px rgba(255,84,112,0.08),
+    0 0 18px rgba(255,84,112,0.08);
+}
+
+.btn-permanent:hover {
+
+  border-color:
+    rgba(255,84,112,0.85);
+
+  box-shadow:
+    0 0 0 1px rgba(255,84,112,0.18),
+    0 0 22px rgba(255,84,112,0.16);
+}
+
+.station-actions .btn-permanent {
+
+  grid-column:
+    1 / -1;
+}
+
+
 .btn-green {
 
   background:
@@ -1971,6 +2010,80 @@ select {
 }
 
 
+.permanent-deleted-title {
+
+  margin:
+    22px 0 10px;
+
+  color:
+    var(--red);
+
+  font-size:
+    14px;
+
+  font-weight:
+    800;
+
+  letter-spacing:
+    0.4px;
+}
+
+.permanent-deleted-note {
+
+  margin-bottom:
+    10px;
+
+  color:
+    var(--muted);
+
+  font-size:
+    12px;
+
+  line-height:
+    1.5;
+}
+
+.permanent-deleted-item {
+
+  display:
+    flex;
+
+  justify-content:
+    space-between;
+
+  align-items:
+    center;
+
+  gap:
+    10px;
+
+  padding:
+    12px;
+
+  border-radius:
+    14px;
+
+  background:
+    rgba(85,17,30,0.18);
+
+  border:
+    1px solid
+    rgba(255,84,112,0.22);
+}
+
+.permanent-deleted-badge {
+
+  color:
+    var(--red);
+
+  font-size:
+    11px;
+
+  font-weight:
+    800;
+}
+
+
 /* ============================================================
    TOAST
    ============================================================ */
@@ -2487,7 +2600,7 @@ Weather Station
   onclick="closeModal('stationModal')"
 >
 
-×
+Ã—
 
 </button>
 
@@ -2518,7 +2631,7 @@ Temperature
 </small>
 
 <strong id="detailTemp">
--- °C
+-- Â°C
 </strong>
 
 </div>
@@ -2810,7 +2923,7 @@ Configure Station
   onclick="closeModal('configModal')"
 >
 
-×
+Ã—
 
 </button>
 
@@ -2984,7 +3097,7 @@ OTA Update
   onclick="closeModal('otaModal')"
 >
 
-×
+Ã—
 
 </button>
 
@@ -3118,7 +3231,7 @@ Restore removed stations
   onclick="closeModal('deletedModal')"
 >
 
-×
+Ã—
 
 </button>
 
@@ -3144,6 +3257,22 @@ Admin Password
 
 <div
   id="deletedList"
+  class="deleted-list"
+>
+</div>
+
+
+<div class="permanent-deleted-title">
+Permanently Deleted Stations
+</div>
+
+<div class="permanent-deleted-note">
+These station IDs are blocked by the server and cannot return by publishing MQTT again.
+They are stored in Supabase and remain blocked after a server restart.
+</div>
+
+<div
+  id="permanentDeletedList"
   class="deleted-list"
 >
 </div>
@@ -3183,6 +3312,9 @@ const state = {
     [],
 
   deletedStations:
+    [],
+
+  permanentlyDeletedStations:
     [],
 
   autoScroll:
@@ -3286,7 +3418,7 @@ function formatTemperature(
     value === undefined
   ) {
 
-    return "-- °C";
+    return "-- Â°C";
   }
 
   return (
@@ -3295,7 +3427,7 @@ function formatTemperature(
     ).toFixed(
       1
     ) +
-    " °C"
+    " Â°C"
   );
 }
 
@@ -3557,14 +3689,36 @@ function renderStations() {
       (
         a,
         b
-      ) =>
-        String(
+      ) => {
+
+        // Online stations are always shown first.
+
+        if (
+          Boolean(
+            a.online
+          ) !==
+          Boolean(
+            b.online
+          )
+        ) {
+
+          return a.online
+            ?
+            -1
+            :
+            1;
+        }
+
+        // Stations with the same status are sorted by ID.
+
+        return String(
           a.station_id
         ).localeCompare(
           String(
             b.station_id
           )
-        )
+        );
+      }
     );
 
 
@@ -3842,6 +3996,20 @@ function renderStations() {
         </button>
 
 
+        <button
+          class="btn btn-permanent"
+          onclick="permanentlyDeleteStation(
+            decodeURIComponent(
+              '${encodedID}'
+            )
+          )"
+        >
+
+        PERMANENT DELETE
+
+        </button>
+
+
         </div>
 
 
@@ -4081,7 +4249,8 @@ async function loadInitialData() {
     const [
       stations,
       logs,
-      deleted
+      deleted,
+      permanentlyDeleted
     ] =
       await Promise.all([
 
@@ -4095,6 +4264,10 @@ async function loadInitialData() {
 
         fetchJSON(
           "/api/deleted-stations"
+        ),
+
+        fetchJSON(
+          "/api/permanently-deleted-stations"
         )
 
       ]);
@@ -4131,11 +4304,23 @@ async function loadInitialData() {
         [];
 
 
+    state.permanentlyDeletedStations =
+      Array.isArray(
+        permanentlyDeleted
+      )
+        ?
+        permanentlyDeleted
+        :
+        [];
+
+
     renderStations();
 
     renderLogs();
 
     renderDeletedStations();
+
+    renderPermanentlyDeletedStations();
 
   }
 
@@ -4280,6 +4465,21 @@ function connectEvents() {
 
 
   events.addEventListener(
+    "permanently_deleted_stations",
+    event => {
+
+      state.permanentlyDeletedStations =
+        JSON.parse(
+          event.data
+        );
+
+
+      renderPermanentlyDeletedStations();
+    }
+  );
+
+
+  events.addEventListener(
     "history_point",
     event => {
 
@@ -4361,7 +4561,7 @@ function updateDetailHeader(
       station.station_name ||
       "--"
     ) +
-    " • " +
+    " â€¢ " +
     (
       station.location ||
       "--"
@@ -4494,7 +4694,7 @@ function renderDetailAlerts(
     alerts.push(
       `
       <div class="alert-pill alert-high-wind">
-      ⚠ High Wind:
+      âš  High Wind:
       ${wind.toFixed(2)}
       m/s
       </div>
@@ -4514,9 +4714,9 @@ function renderDetailAlerts(
     alerts.push(
       `
       <div class="alert-pill alert-high-temp">
-      ⚠ High Temperature:
+      âš  High Temperature:
       ${temp.toFixed(1)}
-      °C
+      Â°C
       </div>
       `
     );
@@ -4996,7 +5196,7 @@ async function loadStationHistory(
     ).innerHTML =
       buildStatsHTML(
         data.stats?.temperature,
-        "°C",
+        "Â°C",
         1
       );
 
@@ -5039,7 +5239,7 @@ async function loadStationHistory(
 
         "rgba(255,159,67,0.12)",
 
-        "°C"
+        "Â°C"
       );
 
 
@@ -5397,6 +5597,171 @@ async function deleteStation(
 
 
 /* ============================================================
+   PERMANENT DELETE
+   ============================================================ */
+
+async function permanentlyDeleteStation(
+  stationID
+) {
+
+  const warning =
+    `PERMANENTLY DELETE ${stationID}?\n\n` +
+    "This will:\n" +
+    "- remove the station from the dashboard\n" +
+    "- remove its current in-memory history\n" +
+    "- block future MQTT messages from this station ID\n" +
+    "- keep it blocked after Render restarts\n\n" +
+    "This is different from the normal DELETE button.";
+
+  if (
+    !confirm(
+      warning
+    )
+  ) {
+
+    return;
+  }
+
+
+  const typedID =
+    prompt(
+      `For safety, type the station ID exactly:\n${stationID}`
+    );
+
+
+  if (
+    typedID === null
+  ) {
+
+    return;
+  }
+
+
+  if (
+    typedID.trim() !==
+    stationID
+  ) {
+
+    showToast(
+      "Station ID did not match. Permanent delete cancelled.",
+      "error"
+    );
+
+    return;
+  }
+
+
+  const password =
+    prompt(
+      "Enter admin password to permanently delete this station"
+    );
+
+
+  if (
+    !password
+  ) {
+
+    return;
+  }
+
+
+  try {
+
+    const result =
+      await fetchJSON(
+        `/api/stations/${encodeURIComponent(
+          stationID
+        )}/permanent`,
+        {
+
+          method:
+            "DELETE",
+
+          headers: {
+
+            "Content-Type":
+              "application/json"
+          },
+
+          body:
+            JSON.stringify({
+
+              admin_password:
+                password
+            })
+        }
+      );
+
+
+    state.stations.delete(
+      stationID
+    );
+
+
+    state.deletedStations =
+      state.deletedStations.filter(
+        item =>
+          item !==
+          stationID
+      );
+
+
+    if (
+      !state.permanentlyDeletedStations.includes(
+        stationID
+      )
+    ) {
+
+      state.permanentlyDeletedStations.push(
+        stationID
+      );
+
+      state.permanentlyDeletedStations.sort();
+    }
+
+
+    if (
+      state.currentDetailStation ===
+      stationID
+    ) {
+
+      state.currentDetailStation =
+        null;
+
+      closeModal(
+        "stationModal"
+      );
+    }
+
+
+    renderStations();
+
+    renderDeletedStations();
+
+    renderPermanentlyDeletedStations();
+
+
+    showToast(
+      result.message ||
+      `${stationID} permanently deleted`,
+      "warn"
+    );
+
+  }
+
+  catch (
+    error
+  ) {
+
+    showToast(
+      error.message,
+      "error"
+    );
+  }
+}
+
+
+/* ============================================================
    DELETED STATIONS
    ============================================================ */
 
@@ -5466,6 +5831,64 @@ function renderDeletedStations() {
 }
 
 
+function renderPermanentlyDeletedStations() {
+
+  const container =
+    document.getElementById(
+      "permanentDeletedList"
+    );
+
+
+  if (
+    !container
+  ) {
+
+    return;
+  }
+
+
+  if (
+    state.permanentlyDeletedStations.length ===
+    0
+  ) {
+
+    container.innerHTML =
+      `
+      <div class="empty-state">
+      No permanently deleted stations
+      </div>
+      `;
+
+    return;
+  }
+
+
+  container.innerHTML =
+    state.permanentlyDeletedStations
+      .map(
+        stationID => {
+
+          return `
+          <div class="permanent-deleted-item">
+
+          <strong>
+          ${escapeHTML(
+            stationID
+          )}
+          </strong>
+
+          <span class="permanent-deleted-badge">
+          PERMANENTLY BLOCKED
+          </span>
+
+          </div>
+          `;
+        }
+      )
+      .join("");
+}
+
+
 function openDeletedModal() {
 
   document.getElementById(
@@ -5475,6 +5898,8 @@ function openDeletedModal() {
 
 
   renderDeletedStations();
+
+  renderPermanentlyDeletedStations();
 
 
   openModal(
@@ -5554,6 +5979,8 @@ async function restoreStation(
 
 
     renderDeletedStations();
+
+    renderPermanentlyDeletedStations();
 
   }
 
