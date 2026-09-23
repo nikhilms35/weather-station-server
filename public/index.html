@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 
 <head>
@@ -2598,11 +2598,7 @@ Weather Station
 <button
   class="close-btn"
   onclick="closeModal('stationModal')"
->
-
-Ã—
-
-</button>
+>&times;</button>
 
 </div>
 
@@ -2631,7 +2627,7 @@ Temperature
 </small>
 
 <strong id="detailTemp">
--- Â°C
+-- Ã‚°C
 </strong>
 
 </div>
@@ -2921,11 +2917,7 @@ Configure Station
 <button
   class="close-btn"
   onclick="closeModal('configModal')"
->
-
-Ã—
-
-</button>
+>&times;</button>
 
 
 </div>
@@ -3095,11 +3087,7 @@ OTA Update
 <button
   class="close-btn"
   onclick="closeModal('otaModal')"
->
-
-Ã—
-
-</button>
+>&times;</button>
 
 </div>
 
@@ -3229,11 +3217,7 @@ Restore removed stations
 <button
   class="close-btn"
   onclick="closeModal('deletedModal')"
->
-
-Ã—
-
-</button>
+>&times;</button>
 
 </div>
 
@@ -3418,7 +3402,7 @@ function formatTemperature(
     value === undefined
   ) {
 
-    return "-- Â°C";
+    return "-- Ã‚°C";
   }
 
   return (
@@ -3427,7 +3411,7 @@ function formatTemperature(
     ).toFixed(
       1
     ) +
-    " Â°C"
+    " Ã‚°C"
   );
 }
 
@@ -4561,7 +4545,7 @@ function updateDetailHeader(
       station.station_name ||
       "--"
     ) +
-    " â€¢ " +
+    " Ã¢â‚¬Â¢ " +
     (
       station.location ||
       "--"
@@ -4694,7 +4678,7 @@ function renderDetailAlerts(
     alerts.push(
       `
       <div class="alert-pill alert-high-wind">
-      âš  High Wind:
+      Ã¢Å¡Â  High Wind:
       ${wind.toFixed(2)}
       m/s
       </div>
@@ -4714,9 +4698,9 @@ function renderDetailAlerts(
     alerts.push(
       `
       <div class="alert-pill alert-high-temp">
-      âš  High Temperature:
+      Ã¢Å¡Â  High Temperature:
       ${temp.toFixed(1)}
-      Â°C
+      Ã‚°C
       </div>
       `
     );
@@ -5196,7 +5180,7 @@ async function loadStationHistory(
     ).innerHTML =
       buildStatsHTML(
         data.stats?.temperature,
-        "Â°C",
+        "Ã‚°C",
         1
       );
 
@@ -5239,7 +5223,7 @@ async function loadStationHistory(
 
         "rgba(255,159,67,0.12)",
 
-        "Â°C"
+        "Ã‚°C"
       );
 
 
@@ -6291,3 +6275,4 @@ init();
 </body>
 
 </html>
+
