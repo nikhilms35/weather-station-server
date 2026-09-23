@@ -1,9 +1,8 @@
-﻿require("dotenv").config();
+require("dotenv").config();
 
 const express = require("express");
 const mqtt = require("mqtt");
 const path = require("path");
-const crypto = require("crypto");
 const { createClient } = require("@supabase/supabase-js");
 
 const app = express();
@@ -44,22 +43,6 @@ const MQTT_TLS_REJECT_UNAUTHORIZED =
   ).toLowerCase() !== "false";
 
 // ============================================================
-// DASHBOARD ADMIN
-// ============================================================
-
-const DASHBOARD_ADMIN_PASSWORD =
-  process.env.DASHBOARD_ADMIN_PASSWORD ||
-  "";
-
-const DASHBOARD_LOGIN_USER =
-  process.env.DASHBOARD_LOGIN_USER ||
-  "";
-
-const DASHBOARD_LOGIN_PASSWORD =
-  process.env.DASHBOARD_LOGIN_PASSWORD ||
-  "";
-
-// ============================================================
 // SUPABASE - PERMANENT STATION DELETE
 // ============================================================
 
@@ -69,6 +52,10 @@ const SUPABASE_URL =
 
 const SUPABASE_SERVICE_ROLE_KEY =
   process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  "";
+
+const SUPABASE_PUBLISHABLE_KEY =
+  process.env.SUPABASE_PUBLISHABLE_KEY ||
   "";
 
 let supabase = null;
@@ -186,157 +173,140 @@ const OFFLINE_CHECK_INTERVAL_MS =
   5000;
 
 // ============================================================
-// ADMIN CHECK
+// DASHBOARD EMAIL AUTH
 // ============================================================
 
-function checkAdminPassword(
-  password
-) {
+function parseCookies(req) {
+  const header = String(req.headers.cookie || "");
+  const cookies = {};
+
+  for (const part of header.split(";")) {
+    const item = part.trim();
+    if (!item) continue;
+
+    const separator = item.indexOf("=");
+    if (separator < 0) continue;
+
+    const key = item.slice(0, separator).trim();
+    const value = item.slice(separator + 1);
+
+    try {
+      cookies[key] = decodeURIComponent(value);
+    } catch (_) {
+      cookies[key] = value;
+    }
+  }
+
+  return cookies;
+}
+
+
+async function getAllowedUserFromToken(token) {
+  if (!supabase || !token) {
+    return null;
+  }
+
+  const { data: userData, error: userError } =
+    await supabase.auth.getUser(token);
+
+  if (userError || !userData?.user?.email) {
+    return null;
+  }
+
+  const email = String(userData.user.email).trim().toLowerCase();
+
+  const { data: allowedUser, error: allowedError } =
+    await supabase
+      .from("allowed_users")
+      .select("email, role, active")
+      .ilike("email", email)
+      .maybeSingle();
+
+  if (allowedError || !allowedUser || allowedUser.active !== true) {
+    return null;
+  }
+
+  return {
+    id: userData.user.id,
+    email,
+    role: normalizeDashboardRole(allowedUser.role)
+  };
+}
+
+
+
+function normalizeDashboardRole(role) {
+  const value = String(role || "").trim().toLowerCase();
 
   if (
-    !DASHBOARD_ADMIN_PASSWORD
+    value === "user" ||
+    value === "admin" ||
+    value === "super_admin"
   ) {
-
-    return false;
+    return value;
   }
 
-  return (
-    String(
-      password ||
-      ""
-    ) ===
-    DASHBOARD_ADMIN_PASSWORD
-  );
+  return "user";
 }
 
 
-// ============================================================
-// DASHBOARD LOGIN
-// ============================================================
-
-function safeStringEqual(left, right) {
-
-  const a = Buffer.from(
-    String(left || ""),
-    "utf8"
+function requireDashboardRole(...allowedRoles) {
+  const allowed = new Set(
+    allowedRoles.map(normalizeDashboardRole)
   );
 
-  const b = Buffer.from(
-    String(right || ""),
-    "utf8"
-  );
+  return (req, res, next) => {
+    const role = normalizeDashboardRole(
+      req.dashboardUser?.role
+    );
 
-  if (a.length !== b.length) {
-    return false;
-  }
+    if (!allowed.has(role)) {
+      return res.status(403).json({
+        ok: false,
+        error: "You do not have permission to perform this action"
+      });
+    }
 
-  return crypto.timingSafeEqual(a, b);
-}
-
-function dashboardLoginRequired(req, res, next) {
-
-  if (req.path === "/health") {
     return next();
-  }
+  };
+}
 
-  if (
-    !DASHBOARD_LOGIN_USER ||
-    !DASHBOARD_LOGIN_PASSWORD
-  ) {
 
-    return res.status(503).json({
+const requireAdminOrSuperAdmin =
+  requireDashboardRole(
+    "admin",
+    "super_admin"
+  );
+
+const requireSuperAdmin =
+  requireDashboardRole(
+    "super_admin"
+  );
+
+
+async function requireDashboardAuth(req, res, next) {
+  try {
+    const cookies = parseCookies(req);
+    const token = cookies.weather_auth || "";
+    const user = await getAllowedUserFromToken(token);
+
+    if (!user) {
+      return res.status(401).json({
+        ok: false,
+        error: "Authentication required"
+      });
+    }
+
+    req.dashboardUser = user;
+    return next();
+  } catch (error) {
+    return res.status(401).json({
       ok: false,
-      error: "Dashboard login is not configured"
+      error: "Authentication required"
     });
   }
-
-  const auth =
-    String(
-      req.headers.authorization ||
-      ""
-    );
-
-  if (!auth.startsWith("Basic ")) {
-
-    res.setHeader(
-      "WWW-Authenticate",
-      'Basic realm="Weather Station Dashboard", charset="UTF-8"'
-    );
-
-    return res.status(401).send(
-      "Authentication required"
-    );
-  }
-
-  let decoded = "";
-
-  try {
-
-    decoded = Buffer
-      .from(
-        auth.slice(6),
-        "base64"
-      )
-      .toString("utf8");
-
-  } catch (_) {
-
-    decoded = "";
-  }
-
-  const separator =
-    decoded.indexOf(":");
-
-  if (separator < 0) {
-
-    res.setHeader(
-      "WWW-Authenticate",
-      'Basic realm="Weather Station Dashboard", charset="UTF-8"'
-    );
-
-    return res.status(401).send(
-      "Invalid credentials"
-    );
-  }
-
-  const username =
-    decoded.slice(
-      0,
-      separator
-    );
-
-  const password =
-    decoded.slice(
-      separator + 1
-    );
-
-  if (
-    !safeStringEqual(
-      username,
-      DASHBOARD_LOGIN_USER
-    ) ||
-    !safeStringEqual(
-      password,
-      DASHBOARD_LOGIN_PASSWORD
-    )
-  ) {
-
-    res.setHeader(
-      "WWW-Authenticate",
-      'Basic realm="Weather Station Dashboard", charset="UTF-8"'
-    );
-
-    return res.status(401).send(
-      "Invalid credentials"
-    );
-  }
-
-  next();
 }
 
-app.use(
-  dashboardLoginRequired
-);
 
 app.use(
   express.static(
@@ -346,6 +316,447 @@ app.use(
     )
   )
 );
+
+
+app.get(
+  "/auth/config",
+  (req, res) => {
+    res.json({
+      supabase_url: SUPABASE_URL,
+      supabase_publishable_key: SUPABASE_PUBLISHABLE_KEY
+    });
+  }
+);
+
+
+app.post(
+  "/auth/session",
+  async (req, res) => {
+    try {
+      const authorization = String(req.headers.authorization || "");
+      const token = authorization.startsWith("Bearer ")
+        ? authorization.slice(7).trim()
+        : "";
+
+      const user = await getAllowedUserFromToken(token);
+
+      if (!user) {
+        return res.status(403).json({
+          ok: false,
+          error: "This email is not authorized for this dashboard"
+        });
+      }
+
+      res.setHeader(
+        "Set-Cookie",
+        `weather_auth=${encodeURIComponent(token)}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=3600`
+      );
+
+      return res.json({
+        ok: true,
+        user
+      });
+    } catch (error) {
+      return res.status(401).json({
+        ok: false,
+        error: "Unable to create dashboard session"
+      });
+    }
+  }
+);
+
+
+app.get(
+  "/auth/me",
+  requireDashboardAuth,
+  (req, res) => {
+    res.json({
+      ok: true,
+      user: req.dashboardUser
+    });
+  }
+);
+
+
+app.post(
+  "/auth/logout",
+  (req, res) => {
+    res.setHeader(
+      "Set-Cookie",
+      "weather_auth=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0"
+    );
+
+    res.json({
+      ok: true
+    });
+  }
+);
+
+
+// Protect dashboard data and control APIs.
+app.use(
+  "/api",
+  requireDashboardAuth
+);
+
+
+// ============================================================
+// USER MANAGEMENT API
+// ============================================================
+
+function isValidDashboardRole(role) {
+  return (
+    role === "user" ||
+    role === "admin" ||
+    role === "super_admin"
+  );
+}
+
+
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+
+app.get(
+  "/api/users",
+  requireSuperAdmin,
+  async (req, res) => {
+    try {
+      const { data, error } =
+        await supabase
+          .from("allowed_users")
+          .select("email, role, active, created_at")
+          .order("created_at", {
+            ascending: true
+          });
+
+      if (error) {
+        throw error;
+      }
+
+      return res.json({
+        ok: true,
+        users: (data || []).map(user => ({
+          email: String(user.email || "").trim().toLowerCase(),
+          role: normalizeDashboardRole(user.role),
+          active: user.active === true,
+          created_at: user.created_at || null
+        }))
+      });
+    }
+    catch (error) {
+      return res.status(500).json({
+        ok: false,
+        error: error.message
+      });
+    }
+  }
+);
+
+
+app.post(
+  "/api/users",
+  requireSuperAdmin,
+  async (req, res) => {
+    const email =
+      String(
+        req.body.email ||
+        ""
+      )
+        .trim()
+        .toLowerCase();
+
+    const role =
+      normalizeDashboardRole(
+        req.body.role ||
+        "user"
+      );
+
+    const active =
+      req.body.active === undefined
+        ? true
+        : req.body.active === true;
+
+    if (!isValidEmail(email)) {
+      return res.status(400).json({
+        ok: false,
+        error: "A valid email address is required"
+      });
+    }
+
+    if (
+      !isValidDashboardRole(
+        String(req.body.role || "user")
+          .trim()
+          .toLowerCase()
+      )
+    ) {
+      return res.status(400).json({
+        ok: false,
+        error: "Role must be user, admin, or super_admin"
+      });
+    }
+
+    try {
+      const { data: existing, error: existingError } =
+        await supabase
+          .from("allowed_users")
+          .select("email")
+          .ilike("email", email)
+          .maybeSingle();
+
+      if (existingError) {
+        throw existingError;
+      }
+
+      if (existing) {
+        return res.status(409).json({
+          ok: false,
+          error: "This email is already in the allowed users list"
+        });
+      }
+
+      const { data, error } =
+        await supabase
+          .from("allowed_users")
+          .insert({
+            email,
+            role,
+            active
+          })
+          .select("email, role, active, created_at")
+          .single();
+
+      if (error) {
+        throw error;
+      }
+
+      addLog(
+        "INFO",
+        "AUTH",
+        `User access created for ${email} as ${role} by ${req.dashboardUser.email}`
+      );
+
+      return res.status(201).json({
+        ok: true,
+        user: {
+          email: data.email,
+          role: normalizeDashboardRole(data.role),
+          active: data.active === true,
+          created_at: data.created_at || null
+        }
+      });
+    }
+    catch (error) {
+      return res.status(500).json({
+        ok: false,
+        error: error.message
+      });
+    }
+  }
+);
+
+
+app.patch(
+  "/api/users/:email",
+  requireSuperAdmin,
+  async (req, res) => {
+    const email =
+      String(
+        req.params.email ||
+        ""
+      )
+        .trim()
+        .toLowerCase();
+
+    if (!isValidEmail(email)) {
+      return res.status(400).json({
+        ok: false,
+        error: "A valid email address is required"
+      });
+    }
+
+    const currentEmail =
+      String(
+        req.dashboardUser.email ||
+        ""
+      )
+        .trim()
+        .toLowerCase();
+
+    const updates = {};
+
+    if (req.body.role !== undefined) {
+      const requestedRole =
+        String(req.body.role)
+          .trim()
+          .toLowerCase();
+
+      if (!isValidDashboardRole(requestedRole)) {
+        return res.status(400).json({
+          ok: false,
+          error: "Role must be user, admin, or super_admin"
+        });
+      }
+
+      updates.role = requestedRole;
+    }
+
+    if (req.body.active !== undefined) {
+      if (typeof req.body.active !== "boolean") {
+        return res.status(400).json({
+          ok: false,
+          error: "active must be true or false"
+        });
+      }
+
+      updates.active =
+        req.body.active;
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({
+        ok: false,
+        error: "No user changes were provided"
+      });
+    }
+
+    if (email === currentEmail) {
+      if (
+        updates.active === false ||
+        (
+          updates.role !== undefined &&
+          updates.role !== "super_admin"
+        )
+      ) {
+        return res.status(400).json({
+          ok: false,
+          error: "You cannot deactivate or demote your own super admin account"
+        });
+      }
+    }
+
+    try {
+      const { data, error } =
+        await supabase
+          .from("allowed_users")
+          .update(updates)
+          .ilike("email", email)
+          .select("email, role, active, created_at")
+          .maybeSingle();
+
+      if (error) {
+        throw error;
+      }
+
+      if (!data) {
+        return res.status(404).json({
+          ok: false,
+          error: "User not found"
+        });
+      }
+
+      addLog(
+        "INFO",
+        "AUTH",
+        `User access updated for ${email} by ${req.dashboardUser.email}`
+      );
+
+      return res.json({
+        ok: true,
+        user: {
+          email: data.email,
+          role: normalizeDashboardRole(data.role),
+          active: data.active === true,
+          created_at: data.created_at || null
+        }
+      });
+    }
+    catch (error) {
+      return res.status(500).json({
+        ok: false,
+        error: error.message
+      });
+    }
+  }
+);
+
+
+app.delete(
+  "/api/users/:email",
+  requireSuperAdmin,
+  async (req, res) => {
+    const email =
+      String(
+        req.params.email ||
+        ""
+      )
+        .trim()
+        .toLowerCase();
+
+    if (!isValidEmail(email)) {
+      return res.status(400).json({
+        ok: false,
+        error: "A valid email address is required"
+      });
+    }
+
+    const currentEmail =
+      String(
+        req.dashboardUser.email ||
+        ""
+      )
+        .trim()
+        .toLowerCase();
+
+    if (email === currentEmail) {
+      return res.status(400).json({
+        ok: false,
+        error: "You cannot remove your own super admin account"
+      });
+    }
+
+    try {
+      const { data, error } =
+        await supabase
+          .from("allowed_users")
+          .delete()
+          .ilike("email", email)
+          .select("email, role, active")
+          .maybeSingle();
+
+      if (error) {
+        throw error;
+      }
+
+      if (!data) {
+        return res.status(404).json({
+          ok: false,
+          error: "User not found"
+        });
+      }
+
+      addLog(
+        "WARN",
+        "AUTH",
+        `User access removed for ${email} by ${req.dashboardUser.email}`
+      );
+
+      return res.json({
+        ok: true,
+        message: `${email} removed from dashboard access`
+      });
+    }
+    catch (error) {
+      return res.status(500).json({
+        ok: false,
+        error: error.message
+      });
+    }
+  }
+);
+
 
 // ============================================================
 // PERMANENT DELETE HELPERS
@@ -1038,6 +1449,13 @@ app.get(
           supabase
         ),
 
+      email_auth_configured:
+        Boolean(
+          SUPABASE_URL &&
+          SUPABASE_PUBLISHABLE_KEY &&
+          supabase
+        ),
+
       history_stations:
         stationHistory.size,
 
@@ -1318,6 +1736,7 @@ app.get(
 
 app.delete(
   "/api/stations/:stationID/permanent",
+  requireSuperAdmin,
   async (
     req,
     res
@@ -1328,26 +1747,6 @@ app.delete(
         req.params.stationID ||
         ""
       ).trim();
-
-    if (
-      !checkAdminPassword(
-        req.body.admin_password
-      )
-    ) {
-
-      return res
-        .status(
-          401
-        )
-        .json({
-
-          ok:
-            false,
-
-          error:
-            "Incorrect admin password"
-        });
-    }
 
     if (
       !stationID
@@ -1513,6 +1912,7 @@ app.get(
 
 app.get(
   "/events",
+  requireDashboardAuth,
   (
     req,
     res
@@ -1658,6 +2058,7 @@ function publishMQTT(
 
 app.post(
   "/api/stations/:stationID/status",
+  requireAdminOrSuperAdmin,
   async (
     req,
     res
@@ -1745,6 +2146,7 @@ app.post(
 
 app.post(
   "/api/stations/:stationID/reboot",
+  requireAdminOrSuperAdmin,
   async (
     req,
     res
@@ -1770,26 +2172,6 @@ app.post(
 
           error:
             "Station has been permanently deleted"
-        });
-    }
-
-    if (
-      !checkAdminPassword(
-        req.body.admin_password
-      )
-    ) {
-
-      return res
-        .status(
-          401
-        )
-        .json({
-
-          ok:
-            false,
-
-          error:
-            "Incorrect admin password"
         });
     }
 
@@ -1845,6 +2227,7 @@ app.post(
 
 app.post(
   "/api/stations/:stationID/config",
+  requireAdminOrSuperAdmin,
   async (
     req,
     res
@@ -1870,26 +2253,6 @@ app.post(
 
           error:
             "Station has been permanently deleted"
-        });
-    }
-
-    if (
-      !checkAdminPassword(
-        req.body.admin_password
-      )
-    ) {
-
-      return res
-        .status(
-          401
-        )
-        .json({
-
-          ok:
-            false,
-
-          error:
-            "Incorrect admin password"
         });
     }
 
@@ -2005,6 +2368,7 @@ app.post(
 
 app.post(
   "/api/stations/:stationID/ota",
+  requireAdminOrSuperAdmin,
   async (
     req,
     res
@@ -2012,10 +2376,6 @@ app.post(
 
     const stationID =
       req.params.stationID;
-
-    const adminPassword =
-      req.body.admin_password;
-
     const firmwareURL =
       String(
         req.body.firmware_url ||
@@ -2027,26 +2387,6 @@ app.post(
         req.body.version ||
         ""
       ).trim();
-
-    if (
-      !checkAdminPassword(
-        adminPassword
-      )
-    ) {
-
-      return res
-        .status(
-          401
-        )
-        .json({
-
-          ok:
-            false,
-
-          error:
-            "Incorrect admin password"
-        });
-    }
 
     if (
       !firmwareURL.startsWith(
@@ -2134,7 +2474,7 @@ app.post(
       addLog(
         "OTA",
         stationID,
-        `OTA command sent Ã¢â€ â€™ ${version}`
+        `OTA command sent → ${version}`
       );
 
       res.json({
@@ -2173,6 +2513,7 @@ app.post(
 
 app.delete(
   "/api/stations/:stationID",
+  requireAdminOrSuperAdmin,
   (
     req,
     res
@@ -2180,26 +2521,6 @@ app.delete(
 
     const stationID =
       req.params.stationID;
-
-    if (
-      !checkAdminPassword(
-        req.body.admin_password
-      )
-    ) {
-
-      return res
-        .status(
-          401
-        )
-        .json({
-
-          ok:
-            false,
-
-          error:
-            "Incorrect admin password"
-        });
-    }
 
     stations.delete(
       stationID
@@ -2247,6 +2568,7 @@ app.delete(
 
 app.post(
   "/api/stations/:stationID/restore",
+  requireAdminOrSuperAdmin,
   async (
     req,
     res
@@ -2272,26 +2594,6 @@ app.post(
 
           error:
             "Permanently deleted stations cannot be restored from the dashboard"
-        });
-    }
-
-    if (
-      !checkAdminPassword(
-        req.body.admin_password
-      )
-    ) {
-
-      return res
-        .status(
-          401
-        )
-        .json({
-
-          ok:
-            false,
-
-          error:
-            "Incorrect admin password"
         });
     }
 
@@ -2642,10 +2944,10 @@ mqttClient.on(
               `${formatNumber(
                 oldTemperature,
                 1
-              )} Ã‚Â°C Ã¢â€ â€™ ${formatNumber(
+              )} °C → ${formatNumber(
                 newTemperature,
                 1
-              )} Ã‚Â°C`
+              )} °C`
             );
           }
 
@@ -2693,7 +2995,7 @@ mqttClient.on(
             addLog(
               "RAIN",
               displayName,
-              `${oldRain} Ã¢â€ â€™ ${newRain}`
+              `${oldRain} → ${newRain}`
             );
           }
 
@@ -2747,7 +3049,7 @@ mqttClient.on(
               `${formatNumber(
                 oldWind,
                 2
-              )} Ã¢â€ â€™ ${formatNumber(
+              )} → ${formatNumber(
                 newWind,
                 2
               )} m/s`
@@ -3050,6 +3352,16 @@ async function startServer() {
         "INFO",
         "SERVER",
         `Permanent deleted stations: ${permanentlyDeletedStations.size}`
+      );
+
+      addLog(
+        SUPABASE_PUBLISHABLE_KEY
+          ? "SUCCESS"
+          : "ERROR",
+        "SERVER",
+        SUPABASE_PUBLISHABLE_KEY
+          ? "Supabase email dashboard login enabled"
+          : "SUPABASE_PUBLISHABLE_KEY is missing"
       );
     }
   );

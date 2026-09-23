@@ -13,6 +13,7 @@
 <title>Weather Stations</title>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <style>
 
@@ -2084,6 +2085,57 @@ select {
 }
 
 
+
+function currentRole() {
+  return String(
+    state.currentUser?.role ||
+    "user"
+  ).trim().toLowerCase();
+}
+
+
+function canManageStations() {
+  return (
+    currentRole() === "admin" ||
+    currentRole() === "super_admin"
+  );
+}
+
+
+function isSuperAdmin() {
+  return currentRole() === "super_admin";
+}
+
+
+function applyRoleUI() {
+  const manageUsersBtn =
+    document.getElementById(
+      "manageUsersBtn"
+    );
+
+  const deletedStationsBtn =
+    document.getElementById(
+      "deletedStationsBtn"
+    );
+
+  if (manageUsersBtn) {
+    manageUsersBtn.style.display =
+      isSuperAdmin()
+        ? ""
+        : "none";
+  }
+
+  if (deletedStationsBtn) {
+    deletedStationsBtn.style.display =
+      canManageStations()
+        ? ""
+        : "none";
+  }
+
+  renderStations();
+}
+
+
 /* ============================================================
    TOAST
    ============================================================ */
@@ -2169,6 +2221,141 @@ select {
     var(--muted);
 }
 
+
+
+/* ============================================================
+   EMAIL AUTH
+   ============================================================ */
+
+.auth-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(2,7,11,0.97);
+}
+
+.auth-card {
+  width: min(460px,100%);
+  padding: 28px;
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(8,18,27,0.98), rgba(3,10,16,0.99));
+  border: 1px solid rgba(255,159,63,0.30);
+  border-top: 3px solid var(--orange2);
+  box-shadow: var(--shadow);
+}
+
+.auth-card h2 {
+  margin: 0 0 8px;
+  color: var(--orange);
+}
+
+.auth-card p {
+  margin: 0 0 18px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.auth-message {
+  min-height: 22px;
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.auth-message.error { color: var(--red); }
+.auth-message.success { color: var(--green); }
+
+.auth-user {
+  color: var(--muted);
+  font-size: 12px;
+  margin-right: 8px;
+}
+
+
+/* ============================================================
+   USER MANAGEMENT
+   ============================================================ */
+
+.user-management-table-wrap {
+  overflow-x: auto;
+  border: 1px solid rgba(0,210,255,0.14);
+  border-radius: 14px;
+}
+
+.user-management-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 760px;
+  background: rgba(3,10,16,0.72);
+}
+
+.user-management-table th,
+.user-management-table td {
+  padding: 12px 14px;
+  text-align: left;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+  vertical-align: middle;
+}
+
+.user-management-table th {
+  color: var(--orange);
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  background: rgba(255,123,0,0.05);
+}
+
+.user-management-table td {
+  color: #d9edf8;
+  font-size: 13px;
+}
+
+.user-management-table tr:last-child td {
+  border-bottom: none;
+}
+
+.user-role-select,
+.user-status-select {
+  min-width: 135px;
+}
+
+.user-actions-inline {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.user-status-active {
+  color: var(--green);
+  font-weight: 800;
+}
+
+.user-status-disabled {
+  color: var(--red);
+  font-weight: 800;
+}
+
+.user-self-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  color: var(--cyan);
+  border: 1px solid rgba(0,210,255,0.25);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.user-management-note {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
 
 /* ============================================================
    MOBILE
@@ -2274,7 +2461,25 @@ select {
 
 <body>
 
-<div class="app">
+<div class="auth-screen" id="authScreen">
+  <div class="auth-card">
+    <h2>Weather Stations</h2>
+    <p>Enter an approved email address. Supabase will send you a secure sign-in link.</p>
+
+    <div class="field">
+      <label>Email address</label>
+      <input type="email" id="loginEmail" autocomplete="email" placeholder="name@example.com">
+    </div>
+
+    <button class="btn btn-orange" id="sendLoginLinkBtn" style="width:100%;">
+      SEND LOGIN LINK
+    </button>
+
+    <div class="auth-message" id="authMessage"></div>
+  </div>
+</div>
+
+<div class="app" id="dashboardApp" style="display:none;">
 
 
 <!-- ============================================================
@@ -2316,15 +2521,33 @@ Live monitoring
 </div>
 
 
-<div>
+<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+
+<span class="auth-user" id="signedInUser"></span>
+
+<button
+  class="btn btn-orange"
+  id="manageUsersBtn"
+  onclick="openUsersModal()"
+  style="display:none;"
+>
+MANAGE USERS
+</button>
 
 <button
   class="btn btn-ghost"
+  id="deletedStationsBtn"
   onclick="openDeletedModal()"
+  style="display:none;"
 >
-
 Deleted Stations
+</button>
 
+<button
+  class="btn btn-ghost"
+  onclick="logoutDashboard()"
+>
+SIGN OUT
 </button>
 
 </div>
@@ -2627,7 +2850,7 @@ Temperature
 </small>
 
 <strong id="detailTemp">
--- Ã‚°C
+-- &deg;C
 </strong>
 
 </div>
@@ -3003,19 +3226,6 @@ WiFi Password
 </div>
 
 
-<div class="field">
-
-<label>
-Admin Password
-</label>
-
-<input
-  type="password"
-  id="cfgAdminPassword"
->
-
-</div>
-
 
 <div class="modal-actions">
 
@@ -3132,19 +3342,6 @@ Firmware HTTPS URL
 </div>
 
 
-<div class="field">
-
-<label>
-Admin Password
-</label>
-
-<input
-  type="password"
-  id="otaAdminPassword"
->
-
-</div>
-
 
 <div class="modal-actions">
 
@@ -3225,19 +3422,6 @@ Restore removed stations
 <div class="modal-content">
 
 
-<div class="field">
-
-<label>
-Admin Password
-</label>
-
-<input
-  type="password"
-  id="restoreAdminPassword"
->
-
-</div>
-
 
 <div
   id="deletedList"
@@ -3270,6 +3454,85 @@ They are stored in Supabase and remain blocked after a server restart.
 </div>
 
 
+
+<!-- ============================================================
+     USER MANAGEMENT
+     ============================================================ -->
+
+<div
+  class="modal"
+  id="usersModal"
+>
+  <div
+    class="modal-box"
+    style="max-width:1050px;"
+  >
+    <div class="modal-header">
+      <div>
+        <h3>User Management</h3>
+        <p>Add, promote, disable, or remove dashboard users.</p>
+      </div>
+
+      <button
+        class="close-btn"
+        onclick="closeModal('usersModal')"
+      >&times;</button>
+    </div>
+
+    <div class="modal-content">
+
+      <div class="detail-card" style="margin-bottom:16px;">
+        <h4>Add User</h4>
+
+        <div class="form-grid">
+          <div class="field">
+            <label>Email Address</label>
+            <input
+              type="email"
+              id="newUserEmail"
+              placeholder="name@example.com"
+              autocomplete="off"
+            >
+          </div>
+
+          <div class="field">
+            <label>Role</label>
+            <select id="newUserRole">
+              <option value="user">User</option>
+              <option value="admin">Admin</option>
+              <option value="super_admin">Super Admin</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button
+            type="button"
+            class="btn btn-green"
+            onclick="addManagedUser()"
+          >
+            ADD USER
+          </button>
+        </div>
+      </div>
+
+      <p class="user-management-note">
+        Super Admin accounts have full access. Your own Super Admin account
+        cannot be removed, disabled, or demoted from this dashboard.
+      </p>
+
+      <div
+        id="usersList"
+        class="user-management-table-wrap"
+      >
+        <div class="empty-state">Loading users...</div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+
 <!-- ============================================================
      TOAST
      ============================================================ -->
@@ -3283,11 +3546,21 @@ They are stored in Supabase and remain blocked after a server restart.
 
 <script>
 
+let authClient = null;
+let dashboardInitialized = false;
+let authStateSubscription = null;
+
 /* ============================================================
    STATE
    ============================================================ */
 
 const state = {
+
+  currentUser:
+    null,
+
+  users:
+    [],
 
   stations:
     new Map(),
@@ -3918,83 +4191,83 @@ function renderStations() {
         </div>
 
 
-        <div
-          class="station-actions"
-          onclick="event.stopPropagation()"
-        >
+        ${
+          canManageStations()
+            ?
+              `
+              <div
+                class="station-actions"
+                onclick="event.stopPropagation()"
+              >
 
+              <button
+                class="btn btn-primary"
+                onclick="openConfigModal(
+                  decodeURIComponent(
+                    '${encodedID}'
+                  )
+                )"
+              >
+              CONFIGURE
+              </button>
 
-        <button
-          class="btn btn-primary"
-          onclick="openConfigModal(
-            decodeURIComponent(
-              '${encodedID}'
-            )
-          )"
-        >
+              <button
+                class="btn btn-orange"
+                onclick="openOTAModal(
+                  decodeURIComponent(
+                    '${encodedID}'
+                  )
+                )"
+              >
+              OTA UPDATE
+              </button>
 
-        CONFIGURE
+              <button
+                class="btn btn-yellow"
+                onclick="rebootStation(
+                  decodeURIComponent(
+                    '${encodedID}'
+                  )
+                )"
+              >
+              REBOOT
+              </button>
 
-        </button>
+              <button
+                class="btn btn-red"
+                onclick="deleteStation(
+                  decodeURIComponent(
+                    '${encodedID}'
+                  )
+                )"
+              >
+              DELETE
+              </button>
 
+              ${
+                isSuperAdmin()
+                  ?
+                    `
+                    <button
+                      class="btn btn-permanent"
+                      onclick="permanentlyDeleteStation(
+                        decodeURIComponent(
+                          '${encodedID}'
+                        )
+                      )"
+                    >
+                    PERMANENT DELETE
+                    </button>
+                    `
+                  :
+                    ""
+              }
 
-        <button
-          class="btn btn-orange"
-          onclick="openOTAModal(
-            decodeURIComponent(
-              '${encodedID}'
-            )
-          )"
-        >
-
-        OTA UPDATE
-
-        </button>
-
-
-        <button
-          class="btn btn-yellow"
-          onclick="rebootStation(
-            decodeURIComponent(
-              '${encodedID}'
-            )
-          )"
-        >
-
-        REBOOT
-
-        </button>
-
-
-        <button
-          class="btn btn-red"
-          onclick="deleteStation(
-            decodeURIComponent(
-              '${encodedID}'
-            )
-          )"
-        >
-
-        DELETE
-
-        </button>
-
-
-        <button
-          class="btn btn-permanent"
-          onclick="permanentlyDeleteStation(
-            decodeURIComponent(
-              '${encodedID}'
-            )
-          )"
-        >
-
-        PERMANENT DELETE
-
-        </button>
-
-
-        </div>
+              </div>
+              `
+            :
+              ""
+        }
 
 
         </div>
@@ -4180,6 +4453,186 @@ function clearLogs() {
   renderLogs();
 }
 
+
+/* ============================================================
+   EMAIL AUTH
+   ============================================================ */
+
+function setAuthMessage(message, type = "") {
+  const box = document.getElementById("authMessage");
+  box.textContent = message || "";
+  box.className = "auth-message" + (type ? ` ${type}` : "");
+}
+
+async function configureAuth() {
+  const response = await fetch("/auth/config");
+  const config = await response.json();
+
+  if (
+    !config.supabase_url ||
+    !config.supabase_publishable_key
+  ) {
+    throw new Error("Supabase email login is not configured");
+  }
+
+  authClient = window.supabase.createClient(
+    config.supabase_url,
+    config.supabase_publishable_key,
+    {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true
+      }
+    }
+  );
+}
+
+async function createBackendSession(accessToken) {
+  const response = await fetch(
+    "/auth/session",
+    {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${accessToken}`
+      }
+    }
+  );
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(
+      data.error ||
+      "This email is not authorized"
+    );
+  }
+
+  return data.user;
+}
+
+async function showDashboardForSession(session) {
+  const user = await createBackendSession(session.access_token);
+
+  state.currentUser = user;
+
+  document.getElementById("signedInUser").textContent =
+    `${user.email} (${user.role || "user"})`;
+
+  document.getElementById("authScreen").style.display = "none";
+  document.getElementById("dashboardApp").style.display = "block";
+
+  applyRoleUI();
+
+  if (!dashboardInitialized) {
+    dashboardInitialized = true;
+    await initDashboard();
+  }
+}
+
+async function showLoginScreen(message = "") {
+  document.getElementById("dashboardApp").style.display = "none";
+  document.getElementById("authScreen").style.display = "flex";
+  setAuthMessage(message);
+}
+
+async function sendLoginLink() {
+  const email = document.getElementById("loginEmail").value.trim();
+
+  if (!email) {
+    setAuthMessage("Enter your email address", "error");
+    return;
+  }
+
+  const button = document.getElementById("sendLoginLinkBtn");
+  button.disabled = true;
+  setAuthMessage("Sending secure login link...");
+
+  try {
+    const { error } = await authClient.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: window.location.origin
+      }
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    setAuthMessage(
+      "Check your email and open the sign-in link.",
+      "success"
+    );
+  } catch (error) {
+    setAuthMessage(error.message, "error");
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function logoutDashboard() {
+  try {
+    await fetch("/auth/logout", { method: "POST" });
+
+    if (authClient) {
+      await authClient.auth.signOut();
+    }
+  } catch (_) {}
+
+  window.location.reload();
+}
+
+async function initAuth() {
+  try {
+    await configureAuth();
+
+    document.getElementById("sendLoginLinkBtn")
+      .addEventListener("click", sendLoginLink);
+
+    document.getElementById("loginEmail")
+      .addEventListener("keydown", event => {
+        if (event.key === "Enter") {
+          sendLoginLink();
+        }
+      });
+
+    const { data } = await authClient.auth.getSession();
+
+    if (data.session) {
+      try {
+        await showDashboardForSession(data.session);
+      } catch (error) {
+        await authClient.auth.signOut();
+        await showLoginScreen(error.message);
+      }
+    } else {
+      await showLoginScreen();
+    }
+
+    const { data: listener } = authClient.auth.onAuthStateChange(
+      async (event, session) => {
+        if (
+          session &&
+          (event === "SIGNED_IN" || event === "TOKEN_REFRESHED")
+        ) {
+          try {
+            await showDashboardForSession(session);
+          } catch (error) {
+            await authClient.auth.signOut();
+            await showLoginScreen(error.message);
+          }
+        }
+      }
+    );
+
+    authStateSubscription = listener.subscription;
+
+  } catch (error) {
+    await showLoginScreen(error.message);
+    setAuthMessage(error.message, "error");
+  }
+}
 
 /* ============================================================
    API
@@ -4700,7 +5153,7 @@ function renderDetailAlerts(
       <div class="alert-pill alert-high-temp">
 \u26A0 High Temperature:
       ${temp.toFixed(1)}
-      Ã‚°C
+      &deg;C
       </div>
       `
     );
@@ -5180,7 +5633,7 @@ async function loadStationHistory(
     ).innerHTML =
       buildStatsHTML(
         data.stats?.temperature,
-        "Ã‚°C",
+        "\u00B0C",
         1
       );
 
@@ -5223,7 +5676,7 @@ async function loadStationHistory(
 
         "rgba(255,159,67,0.12)",
 
-        "Ã‚°C"
+        "\u00B0C"
       );
 
 
@@ -5320,6 +5773,14 @@ function openConfigModal(
   stationID
 ) {
 
+  if (!canManageStations()) {
+    showToast(
+      "Your account does not have permission to configure stations",
+      "error"
+    );
+    return;
+  }
+
   const station =
     state.stations.get(
       stationID
@@ -5367,12 +5828,6 @@ function openConfigModal(
 
 
   document.getElementById(
-    "cfgAdminPassword"
-  ).value =
-    "";
-
-
-  document.getElementById(
     "configModalSub"
   ).textContent =
     "Station: " +
@@ -5393,6 +5848,14 @@ function openOTAModal(
   stationID
 ) {
 
+  if (!canManageStations()) {
+    showToast(
+      "Your account does not have permission to perform OTA updates",
+      "error"
+    );
+    return;
+  }
+
   document.getElementById(
     "otaStationId"
   ).value =
@@ -5407,12 +5870,6 @@ function openOTAModal(
 
   document.getElementById(
     "otaURL"
-  ).value =
-    "";
-
-
-  document.getElementById(
-    "otaAdminPassword"
   ).value =
     "";
 
@@ -5438,19 +5895,21 @@ async function rebootStation(
   stationID
 ) {
 
-  const password =
-    prompt(
-      `Enter admin password to reboot ${stationID}`
+  if (!canManageStations()) {
+    showToast(
+      "Your account does not have permission to reboot stations",
+      "error"
     );
-
-
-  if (
-    !password
-  ) {
-
     return;
   }
 
+  if (
+    !confirm(
+      `Reboot ${stationID}?`
+    )
+  ) {
+    return;
+  }
 
   try {
 
@@ -5460,25 +5919,18 @@ async function rebootStation(
           stationID
         )}/reboot`,
         {
-
           method:
             "POST",
 
           headers: {
-
             "Content-Type":
               "application/json"
           },
 
           body:
-            JSON.stringify({
-
-              admin_password:
-                password
-            })
+            JSON.stringify({})
         }
       );
-
 
     showToast(
       result.message ||
@@ -5499,7 +5951,6 @@ async function rebootStation(
   }
 }
 
-
 /* ============================================================
    DELETE
    ============================================================ */
@@ -5508,29 +5959,21 @@ async function deleteStation(
   stationID
 ) {
 
+  if (!canManageStations()) {
+    showToast(
+      "Your account does not have permission to delete stations",
+      "error"
+    );
+    return;
+  }
+
   if (
     !confirm(
       `Delete ${stationID}?`
     )
   ) {
-
     return;
   }
-
-
-  const password =
-    prompt(
-      "Enter admin password"
-    );
-
-
-  if (
-    !password
-  ) {
-
-    return;
-  }
-
 
   try {
 
@@ -5540,25 +5983,18 @@ async function deleteStation(
           stationID
         )}`,
         {
-
           method:
             "DELETE",
 
           headers: {
-
             "Content-Type":
               "application/json"
           },
 
           body:
-            JSON.stringify({
-
-              admin_password:
-                password
-            })
+            JSON.stringify({})
         }
       );
-
 
     showToast(
       result.message ||
@@ -5579,7 +6015,6 @@ async function deleteStation(
   }
 }
 
-
 /* ============================================================
    PERMANENT DELETE
    ============================================================ */
@@ -5587,6 +6022,14 @@ async function deleteStation(
 async function permanentlyDeleteStation(
   stationID
 ) {
+
+  if (!isSuperAdmin()) {
+    showToast(
+      "Only a Super Admin can permanently delete a station",
+      "error"
+    );
+    return;
+  }
 
   const warning =
     `PERMANENTLY DELETE ${stationID}?\n\n` +
@@ -5602,24 +6045,19 @@ async function permanentlyDeleteStation(
       warning
     )
   ) {
-
     return;
   }
-
 
   const typedID =
     prompt(
       `For safety, type the station ID exactly:\n${stationID}`
     );
 
-
   if (
     typedID === null
   ) {
-
     return;
   }
-
 
   if (
     typedID.trim() !==
@@ -5634,21 +6072,6 @@ async function permanentlyDeleteStation(
     return;
   }
 
-
-  const password =
-    prompt(
-      "Enter admin password to permanently delete this station"
-    );
-
-
-  if (
-    !password
-  ) {
-
-    return;
-  }
-
-
   try {
 
     const result =
@@ -5657,30 +6080,22 @@ async function permanentlyDeleteStation(
           stationID
         )}/permanent`,
         {
-
           method:
             "DELETE",
 
           headers: {
-
             "Content-Type":
               "application/json"
           },
 
           body:
-            JSON.stringify({
-
-              admin_password:
-                password
-            })
+            JSON.stringify({})
         }
       );
-
 
     state.stations.delete(
       stationID
     );
-
 
     state.deletedStations =
       state.deletedStations.filter(
@@ -5688,7 +6103,6 @@ async function permanentlyDeleteStation(
           item !==
           stationID
       );
-
 
     if (
       !state.permanentlyDeletedStations.includes(
@@ -5703,7 +6117,6 @@ async function permanentlyDeleteStation(
       state.permanentlyDeletedStations.sort();
     }
 
-
     if (
       state.currentDetailStation ===
       stationID
@@ -5717,13 +6130,9 @@ async function permanentlyDeleteStation(
       );
     }
 
-
     renderStations();
-
     renderDeletedStations();
-
     renderPermanentlyDeletedStations();
-
 
     showToast(
       result.message ||
@@ -5743,7 +6152,6 @@ async function permanentlyDeleteStation(
     );
   }
 }
-
 
 /* ============================================================
    DELETED STATIONS
@@ -5875,16 +6283,17 @@ function renderPermanentlyDeletedStations() {
 
 function openDeletedModal() {
 
-  document.getElementById(
-    "restoreAdminPassword"
-  ).value =
-    "";
-
+  if (!canManageStations()) {
+    showToast(
+      "Your account does not have permission to manage deleted stations",
+      "error"
+    );
+    return;
+  }
 
   renderDeletedStations();
 
   renderPermanentlyDeletedStations();
-
 
   openModal(
     "deletedModal"
@@ -5900,24 +6309,13 @@ async function restoreStation(
   stationID
 ) {
 
-  const password =
-    document.getElementById(
-      "restoreAdminPassword"
-    ).value;
-
-
-  if (
-    !password
-  ) {
-
+  if (!canManageStations()) {
     showToast(
-      "Enter admin password",
-      "warn"
+      "Your account does not have permission to restore stations",
+      "error"
     );
-
     return;
   }
-
 
   try {
 
@@ -5927,32 +6325,24 @@ async function restoreStation(
           stationID
         )}/restore`,
         {
-
           method:
             "POST",
 
           headers: {
-
             "Content-Type":
               "application/json"
           },
 
           body:
-            JSON.stringify({
-
-              admin_password:
-                password
-            })
+            JSON.stringify({})
         }
       );
-
 
     showToast(
       result.message ||
       "Station restored",
       "success"
     );
-
 
     state.deletedStations =
       state.deletedStations.filter(
@@ -5961,10 +6351,446 @@ async function restoreStation(
           stationID
       );
 
-
     renderDeletedStations();
-
     renderPermanentlyDeletedStations();
+
+  }
+
+  catch (
+    error
+  ) {
+
+    showToast(
+      error.message,
+      "error"
+    );
+  }
+}
+
+
+
+/* ============================================================
+   USER MANAGEMENT
+   ============================================================ */
+
+async function loadManagedUsers() {
+
+  if (!isSuperAdmin()) {
+    return;
+  }
+
+  const container =
+    document.getElementById(
+      "usersList"
+    );
+
+  container.innerHTML =
+    '<div class="empty-state">Loading users...</div>';
+
+  try {
+
+    const result =
+      await fetchJSON(
+        "/api/users"
+      );
+
+    state.users =
+      Array.isArray(
+        result.users
+      )
+        ?
+        result.users
+        :
+        [];
+
+    renderManagedUsers();
+
+  }
+
+  catch (
+    error
+  ) {
+
+    container.innerHTML =
+      `<div class="empty-state">${escapeHTML(
+        error.message
+      )}</div>`;
+
+    showToast(
+      error.message,
+      "error"
+    );
+  }
+}
+
+
+function renderManagedUsers() {
+
+  const container =
+    document.getElementById(
+      "usersList"
+    );
+
+  if (!container) {
+    return;
+  }
+
+  if (
+    !state.users.length
+  ) {
+
+    container.innerHTML =
+      '<div class="empty-state">No users found</div>';
+
+    return;
+  }
+
+  const currentEmail =
+    String(
+      state.currentUser?.email ||
+      ""
+    ).toLowerCase();
+
+  const rows =
+    state.users.map(
+      user => {
+
+        const email =
+          String(
+            user.email ||
+            ""
+          ).toLowerCase();
+
+        const encoded =
+          encodeURIComponent(
+            email
+          );
+
+        const isSelf =
+          email === currentEmail;
+
+        const role =
+          String(
+            user.role ||
+            "user"
+          );
+
+        const active =
+          user.active === true;
+
+        return `
+          <tr>
+            <td>
+              <strong>${escapeHTML(email)}</strong>
+              ${
+                isSelf
+                  ?
+                    '<span class="user-self-badge">YOU</span>'
+                  :
+                    ''
+              }
+            </td>
+
+            <td>
+              <select
+                class="user-role-select"
+                id="userRole_${encoded}"
+                ${isSelf ? "disabled" : ""}
+              >
+                <option value="user" ${role === "user" ? "selected" : ""}>User</option>
+                <option value="admin" ${role === "admin" ? "selected" : ""}>Admin</option>
+                <option value="super_admin" ${role === "super_admin" ? "selected" : ""}>Super Admin</option>
+              </select>
+            </td>
+
+            <td>
+              <select
+                class="user-status-select"
+                id="userActive_${encoded}"
+                ${isSelf ? "disabled" : ""}
+              >
+                <option value="true" ${active ? "selected" : ""}>Active</option>
+                <option value="false" ${!active ? "selected" : ""}>Disabled</option>
+              </select>
+            </td>
+
+            <td>
+              <span class="${active ? "user-status-active" : "user-status-disabled"}">
+                ${active ? "ACTIVE" : "DISABLED"}
+              </span>
+            </td>
+
+            <td>
+              <div class="user-actions-inline">
+                ${
+                  isSelf
+                    ?
+                      '<span class="auth-user">Protected account</span>'
+                    :
+                      `
+                      <button
+                        class="btn btn-primary"
+                        onclick="updateManagedUser(
+                          decodeURIComponent(
+                            '${encoded}'
+                          )
+                        )"
+                      >
+                        SAVE
+                      </button>
+
+                      <button
+                        class="btn btn-red"
+                        onclick="removeManagedUser(
+                          decodeURIComponent(
+                            '${encoded}'
+                          )
+                        )"
+                      >
+                        REMOVE
+                      </button>
+                      `
+                }
+              </div>
+            </td>
+          </tr>
+        `;
+      }
+    ).join("");
+
+  container.innerHTML =
+    `
+    <table class="user-management-table">
+      <thead>
+        <tr>
+          <th>Email</th>
+          <th>Role</th>
+          <th>Access</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows}
+      </tbody>
+    </table>
+    `;
+}
+
+
+async function openUsersModal() {
+
+  if (!isSuperAdmin()) {
+    showToast(
+      "Only a Super Admin can manage users",
+      "error"
+    );
+    return;
+  }
+
+  document.getElementById(
+    "newUserEmail"
+  ).value =
+    "";
+
+  document.getElementById(
+    "newUserRole"
+  ).value =
+    "user";
+
+  openModal(
+    "usersModal"
+  );
+
+  await loadManagedUsers();
+}
+
+
+async function addManagedUser() {
+
+  if (!isSuperAdmin()) {
+    return;
+  }
+
+  const email =
+    document.getElementById(
+      "newUserEmail"
+    ).value
+      .trim()
+      .toLowerCase();
+
+  const role =
+    document.getElementById(
+      "newUserRole"
+    ).value;
+
+  if (!email) {
+    showToast(
+      "Enter an email address",
+      "warn"
+    );
+    return;
+  }
+
+  try {
+
+    const result =
+      await fetchJSON(
+        "/api/users",
+        {
+          method:
+            "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json"
+          },
+
+          body:
+            JSON.stringify({
+              email,
+              role,
+              active:
+                true
+            })
+        }
+      );
+
+    showToast(
+      `${result.user?.email || email} added`,
+      "success"
+    );
+
+    document.getElementById(
+      "newUserEmail"
+    ).value =
+      "";
+
+    document.getElementById(
+      "newUserRole"
+    ).value =
+      "user";
+
+    await loadManagedUsers();
+
+  }
+
+  catch (
+    error
+  ) {
+
+    showToast(
+      error.message,
+      "error"
+    );
+  }
+}
+
+
+async function updateManagedUser(
+  email
+) {
+
+  if (!isSuperAdmin()) {
+    return;
+  }
+
+  const encoded =
+    encodeURIComponent(
+      email
+    );
+
+  const role =
+    document.getElementById(
+      `userRole_${encoded}`
+    ).value;
+
+  const active =
+    document.getElementById(
+      `userActive_${encoded}`
+    ).value ===
+    "true";
+
+  try {
+
+    await fetchJSON(
+      `/api/users/${encodeURIComponent(
+        email
+      )}`,
+      {
+        method:
+          "PATCH",
+
+        headers: {
+          "Content-Type":
+            "application/json"
+        },
+
+        body:
+          JSON.stringify({
+            role,
+            active
+          })
+      }
+    );
+
+    showToast(
+      `${email} updated`,
+      "success"
+    );
+
+    await loadManagedUsers();
+
+  }
+
+  catch (
+    error
+  ) {
+
+    showToast(
+      error.message,
+      "error"
+    );
+
+    await loadManagedUsers();
+  }
+}
+
+
+async function removeManagedUser(
+  email
+) {
+
+  if (!isSuperAdmin()) {
+    return;
+  }
+
+  if (
+    !confirm(
+      `Remove dashboard access for ${email}?`
+    )
+  ) {
+    return;
+  }
+
+  try {
+
+    await fetchJSON(
+      `/api/users/${encodeURIComponent(
+        email
+      )}`,
+      {
+        method:
+          "DELETE"
+      }
+    );
+
+    showToast(
+      `${email} removed`,
+      "warn"
+    );
+
+    await loadManagedUsers();
 
   }
 
@@ -6038,11 +6864,6 @@ document.getElementById(
                 wifi_password:
                   document.getElementById(
                     "cfgWifiPassword"
-                  ).value,
-
-                admin_password:
-                  document.getElementById(
-                    "cfgAdminPassword"
                   ).value
               })
           }
@@ -6124,11 +6945,6 @@ document.getElementById(
                 firmware_url:
                   document.getElementById(
                     "otaURL"
-                  ).value,
-
-                admin_password:
-                  document.getElementById(
-                    "otaAdminPassword"
                   ).value
               })
           }
@@ -6220,7 +7036,9 @@ window.addEventListener(
 
       "otaModal",
 
-      "deletedModal"
+      "deletedModal",
+
+      "usersModal"
     ];
 
 
@@ -6253,7 +7071,7 @@ window.addEventListener(
    INIT
    ============================================================ */
 
-async function init() {
+async function initDashboard() {
 
   setLiveStatus(
     false
@@ -6262,12 +7080,13 @@ async function init() {
 
   await loadInitialData();
 
+  applyRoleUI();
 
   connectEvents();
 }
 
 
-init();
+initAuth();
 
 </script>
 

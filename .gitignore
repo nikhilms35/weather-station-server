@@ -8,3 +8,7 @@ public/firmware/
 *.binserver-before-permanent-delete-backup.js
 
 server-before-permanent-delete-backup.js
+
+server-before-email-auth.js
+
+server-before-login-backup.js
