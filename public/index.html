@@ -3402,7 +3402,7 @@ function formatTemperature(
     value === undefined
   ) {
 
-    return "-- Ã‚°C";
+    return "-- \u00B0C";
   }
 
   return (
@@ -3411,7 +3411,7 @@ function formatTemperature(
     ).toFixed(
       1
     ) +
-    " Ã‚°C"
+    " \u00B0C"
   );
 }
 
@@ -4545,7 +4545,7 @@ function updateDetailHeader(
       station.station_name ||
       "--"
     ) +
-    " Ã¢â‚¬Â¢ " +
+    " \u2022 " +
     (
       station.location ||
       "--"
@@ -4678,7 +4678,7 @@ function renderDetailAlerts(
     alerts.push(
       `
       <div class="alert-pill alert-high-wind">
-      Ã¢Å¡Â  High Wind:
+\u26A0 High Wind:
       ${wind.toFixed(2)}
       m/s
       </div>
@@ -4698,7 +4698,7 @@ function renderDetailAlerts(
     alerts.push(
       `
       <div class="alert-pill alert-high-temp">
-      Ã¢Å¡Â  High Temperature:
+\u26A0 High Temperature:
       ${temp.toFixed(1)}
       Ã‚°C
       </div>
@@ -6275,4 +6275,5 @@ init();
 </body>
 
 </html>
+
 
